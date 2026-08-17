@@ -3,3 +3,6 @@ plotly==6.3.0
 pandas==2.3.3
 numpy==2.2.6
 streamlit-autorefresh==1.0.1
+smartapi-python
+pyotp
+requests
