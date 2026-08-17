@@ -7,47 +7,65 @@ from datetime import datetime, timedelta
 
 try:
     from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=3000, key="quant_refresh")
-except Exception:
-    pass
+except ImportError:
+    st_autorefresh = None
 
+# -------------------------------------------------------------
+# PAGE CONFIG
+# -------------------------------------------------------------
 st.set_page_config(
-    page_title="Quant Option Engine",
+    page_title="Quant OptionScalp Dashboard",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
+# -------------------------------------------------------------
+# AUTO REFRESH
+# -------------------------------------------------------------
+if st_autorefresh is not None:
+    st_autorefresh(interval=3000, key="quant_refresh")
+
+# -------------------------------------------------------------
+# CUSTOM DARK THEME
+# -------------------------------------------------------------
 st.markdown("""
 <style>
-.reportview-container, .main {
-    background-color: #0e1117;
-    color: #ffffff;
-}
-.metric-box {
-    padding: 10px;
-    border-radius: 8px;
-    text-align: center;
-    font-weight: bold;
-    margin-bottom: 8px;
-}
-.status-bullish {
-    background-color: #008000;
-    color: white;
-}
-.status-bearish {
-    background-color: #8b0000;
-    color: white;
-}
-.status-wait {
-    background-color: #b8860b;
-    color: white;
-}
+    .stApp {
+        background-color: #0e1117;
+        color: white;
+    }
+
+    .metric-box {
+        padding: 10px;
+        border-radius: 8px;
+        text-align: center;
+        font-weight: bold;
+        margin-bottom: 8px;
+    }
+
+    .status-bullish {
+        background-color: #008000;
+        color: white;
+    }
+
+    .status-bearish {
+        background-color: #8b0000;
+        color: white;
+    }
+
+    .status-wait {
+        background-color: #b8860b;
+        color: white;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-
+# -------------------------------------------------------------
+# SYNTHETIC DATA ENGINE
+# -------------------------------------------------------------
 @st.cache_data(ttl=2)
 def get_market_data():
+
     now = datetime.now()
 
     times = [
@@ -57,16 +75,12 @@ def get_market_data():
 
     np.random.seed(42)
 
-    put_prices = (
-        80 + np.cumsum(
-            np.random.randn(len(times)) * 1.5
-        )
+    put_prices = 80 + np.cumsum(
+        np.random.randn(len(times)) * 1.5
     )
 
-    call_prices = (
-        110 - np.cumsum(
-            np.random.randn(len(times)) * 1.2
-        )
+    call_prices = 110 - np.cumsum(
+        np.random.randn(len(times)) * 1.2
     )
 
     put_poc = float(np.round(np.mean(put_prices), 2))
@@ -106,46 +120,69 @@ def get_market_data():
 
 df, put_poc, call_poc, straddle_tloc = get_market_data()
 
+# -------------------------------------------------------------
+# TITLE
+# -------------------------------------------------------------
 st.title("⚡ Quant OptionScalp Dashboard")
 
+# -------------------------------------------------------------
+# TOP METRICS
+# -------------------------------------------------------------
 col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
     st.markdown(
-        f'<div class="metric-box status-bearish">'
-        f'PUT POC: ₹{put_poc:.2f}</div>',
+        f"""
+        <div class="metric-box status-bearish">
+        PUT POC: ₹{put_poc:.2f}
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
 with col2:
     st.markdown(
-        f'<div class="metric-box status-bullish">'
-        f'CALL POC: ₹{call_poc:.2f}</div>',
+        f"""
+        <div class="metric-box status-bullish">
+        CALL POC: ₹{call_poc:.2f}
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
 with col3:
     st.markdown(
-        f'<div class="metric-box status-wait">'
-        f'STRADDLE TLOC: ₹{straddle_tloc:.2f}</div>',
+        f"""
+        <div class="metric-box status-wait">
+        STRADDLE TLOC: ₹{straddle_tloc:.2f}
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
 with col4:
     st.markdown(
-        '<div class="metric-box status-bearish">'
-        'MULTI-TREND: BEARISH</div>',
+        """
+        <div class="metric-box status-bearish">
+        MULTI-TREND: BEARISH
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
 with col5:
     st.markdown(
-        '<div class="metric-box status-wait">'
-        'MARKET: WAIT / MIXED</div>',
+        """
+        <div class="metric-box status-wait">
+        MARKET: WAIT / MIXED
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
-
+# -------------------------------------------------------------
+# CHART
+# -------------------------------------------------------------
 fig = make_subplots(
     rows=3,
     cols=1,
@@ -159,7 +196,7 @@ fig = make_subplots(
     )
 )
 
-
+# PUT
 fig.add_trace(
     go.Scatter(
         x=df["time"],
@@ -171,6 +208,7 @@ fig.add_trace(
     col=1
 )
 
+# CALL
 fig.add_trace(
     go.Scatter(
         x=df["time"],
@@ -182,6 +220,7 @@ fig.add_trace(
     col=1
 )
 
+# PUT POC
 fig.add_hline(
     y=put_poc,
     line_dash="dash",
@@ -191,6 +230,7 @@ fig.add_hline(
     col=1
 )
 
+# CALL POC
 fig.add_hline(
     y=call_poc,
     line_dash="dash",
@@ -200,6 +240,7 @@ fig.add_hline(
     col=1
 )
 
+# TS DOTS
 fig.add_trace(
     go.Scatter(
         x=df["time"],
@@ -216,7 +257,7 @@ fig.add_trace(
     col=1
 )
 
-
+# STRADDLE
 fig.add_trace(
     go.Scatter(
         x=df["time"],
@@ -228,6 +269,7 @@ fig.add_trace(
     col=1
 )
 
+# VWAP
 fig.add_trace(
     go.Scatter(
         x=df["time"],
@@ -239,6 +281,7 @@ fig.add_trace(
     col=1
 )
 
+# TLOC
 fig.add_hline(
     y=straddle_tloc,
     line_dash="dash",
@@ -248,7 +291,7 @@ fig.add_hline(
     col=1
 )
 
-
+# TREND IMPULSE
 fig.add_trace(
     go.Bar(
         x=df["time"],
@@ -260,11 +303,16 @@ fig.add_trace(
     col=1
 )
 
-
+# LAYOUT
 fig.update_layout(
     height=650,
     template="plotly_dark",
-    margin=dict(l=10, r=10, t=30, b=10),
+    margin=dict(
+        l=10,
+        r=10,
+        t=30,
+        b=10
+    ),
     legend=dict(
         orientation="h",
         yanchor="bottom",
@@ -274,9 +322,14 @@ fig.update_layout(
     )
 )
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
 
-
+# -------------------------------------------------------------
+# POWER HISTORY
+# -------------------------------------------------------------
 st.subheader("📊 Power History (5 Strike Matrix)")
 
 power_data = {
@@ -287,6 +340,7 @@ power_data = {
         "11:28 AM",
         "11:27 AM"
     ],
+
     "Call Power (CE Contracts)": [
         "-5,92,558",
         "-5,61,119",
@@ -294,6 +348,7 @@ power_data = {
         "-4,91,657",
         "-4,73,160"
     ],
+
     "Put Power (PE Contracts)": [
         "+16,16,893",
         "+15,61,832",
@@ -301,6 +356,7 @@ power_data = {
         "+14,16,448",
         "+13,86,372"
     ],
+
     "Market Sentiment": [
         "🔴 Put Buyers Strong",
         "🔴 Put Buyers Strong",
@@ -310,4 +366,6 @@ power_data = {
     ]
 }
 
-st.table(pd.DataFrame(power_data))
+st.table(
+    pd.DataFrame(power_data)
+)
