@@ -7,104 +7,67 @@ from datetime import datetime, timedelta
 
 try:
     from streamlit_autorefresh import st_autorefresh
-except ImportError:
-    st_autorefresh = None
+    st_autorefresh(interval=3000, key="quant_refresh")
+except Exception:
+    pass
 
-# -------------------------------------------------------------
-# PAGE CONFIG
-# -------------------------------------------------------------
 st.set_page_config(
     page_title="Quant OptionScalp Dashboard",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# -------------------------------------------------------------
-# AUTO REFRESH
-# -------------------------------------------------------------
-if st_autorefresh is not None:
-    st_autorefresh(interval=3000, key="quant_refresh")
-
-# -------------------------------------------------------------
-# CUSTOM DARK THEME
-# -------------------------------------------------------------
+# Custom Mobile CSS
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #0e1117;
-        color: white;
-    }
-
-    .metric-box {
-        padding: 10px;
-        border-radius: 8px;
-        text-align: center;
-        font-weight: bold;
-        margin-bottom: 8px;
-    }
-
-    .status-bullish {
-        background-color: #008000;
-        color: white;
-    }
-
-    .status-bearish {
-        background-color: #8b0000;
-        color: white;
-    }
-
-    .status-wait {
-        background-color: #b8860b;
-        color: white;
-    }
+    .stApp { background-color: #0b0e14; color: #ffffff; }
+    .metric-grid { display: flex; flex-direction: row; gap: 6px; margin-bottom: 12px; }
+    .metric-card { flex: 1; padding: 8px 4px; border-radius: 6px; text-align: center; font-size: 13px; font-weight: bold; }
+    .status-bullish { background-color: #006622; color: #ffffff; }
+    .status-bearish { background-color: #8b0000; color: #ffffff; }
+    .status-wait { background-color: #996600; color: #ffffff; }
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# SYNTHETIC DATA ENGINE
+# REALISTIC OPTION & STRADDLE SIMULATION ENGINE
 # -------------------------------------------------------------
 @st.cache_data(ttl=2)
 def get_market_data():
-
     now = datetime.now()
-
-    times = [
-        now - timedelta(minutes=i)
-        for i in range(40, -1, -1)
-    ]
-
-    np.random.seed(42)
-
-    put_prices = 80 + np.cumsum(
-        np.random.randn(len(times)) * 1.5
-    )
-
-    call_prices = 110 - np.cumsum(
-        np.random.randn(len(times)) * 1.2
-    )
-
-    put_poc = float(np.round(np.mean(put_prices), 2))
-    call_poc = float(np.round(np.mean(call_prices), 2))
-
+    n_bars = 45
+    times = [now - timedelta(minutes=i) for i in range(n_bars, -1, -1)]
+    
+    np.random.seed(int(now.minute) + 10)
+    
+    # 1. Option Prices with Mean-Reversion
+    base_put, base_call = 75.0, 115.0
+    put_walk = np.cumsum(np.random.randn(len(times)) * 1.8)
+    call_walk = np.cumsum(np.random.randn(len(times)) * 1.4)
+    
+    put_prices = np.maximum(20.0, base_put + put_walk)
+    call_prices = np.maximum(20.0, base_call - call_walk)
+    
+    volumes = np.random.randint(1500, 8500, size=len(times))
+    
+    # 2. Strike Volume POCs
+    put_poc = float(np.round(np.average(put_prices, weights=volumes), 2))
+    call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
+    
+    # 3. Synthetic Combined Straddle & Cumulative VWAP
     straddle_price = put_prices + call_prices
-
-    straddle_vwap = np.convolve(
-        straddle_price,
-        np.ones(5) / 5,
-        mode="same"
-    )
-
-    straddle_tloc = float(
-        np.round(np.mean(straddle_price), 2)
-    )
-
-    impulse = np.random.randn(len(times))
-
-    ts_dots = np.where(
-        impulse > 0.8,
-        put_prices + 1.5,
-        np.nan
-    )
+    cum_vol = np.cumsum(volumes)
+    straddle_vwap = np.cumsum(straddle_price * volumes) / cum_vol
+    straddle_tloc = float(np.round(np.mean(straddle_price[:15]), 2))
+    
+    # 4. SMI / Delta Force
+    delta_force = np.convolve(np.random.randn(len(times)) * 2.5, np.ones(3)/3, mode='same')
+    
+    # 5. Trend Scalper (TS) Double Dots (Fires when Put reclaims POC with positive delta)
+    ts_dots = np.full(len(times), np.nan)
+    for i in range(1, len(times)):
+        if (put_prices[i] >= put_poc) and (delta_force[i] > 0.5):
+            ts_dots[i] = put_prices[i] + 1.2
 
     df = pd.DataFrame({
         "time": times,
@@ -112,220 +75,63 @@ def get_market_data():
         "call_price": call_prices,
         "straddle": straddle_price,
         "straddle_vwap": straddle_vwap,
+        "delta_force": delta_force,
         "ts_dots": ts_dots
     })
-
     return df, put_poc, call_poc, straddle_tloc
-
 
 df, put_poc, call_poc, straddle_tloc = get_market_data()
 
 # -------------------------------------------------------------
-# TITLE
+# TOP COMPACT METRIC CARDS
 # -------------------------------------------------------------
 st.title("⚡ Quant OptionScalp Dashboard")
 
-# -------------------------------------------------------------
-# TOP METRICS
-# -------------------------------------------------------------
-col1, col2, col3, col4, col5 = st.columns(5)
-
-with col1:
-    st.markdown(
-        f"""
-        <div class="metric-box status-bearish">
-        PUT POC: ₹{put_poc:.2f}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col2:
-    st.markdown(
-        f"""
-        <div class="metric-box status-bullish">
-        CALL POC: ₹{call_poc:.2f}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col3:
-    st.markdown(
-        f"""
-        <div class="metric-box status-wait">
-        STRADDLE TLOC: ₹{straddle_tloc:.2f}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col4:
-    st.markdown(
-        """
-        <div class="metric-box status-bearish">
-        MULTI-TREND: BEARISH
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col5:
-    st.markdown(
-        """
-        <div class="metric-box status-wait">
-        MARKET: WAIT / MIXED
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+st.markdown(f"""
+<div class="metric-grid">
+    <div class="metric-card status-bearish">PUT POC: ₹{put_poc:.2f}</div>
+    <div class="metric-card status-bullish">CALL POC: ₹{call_poc:.2f}</div>
+    <div class="metric-card status-wait">TLOC: ₹{straddle_tloc:.2f}</div>
+    <div class="metric-card status-bearish">TREND: BEARISH</div>
+    <div class="metric-card status-wait">STATUS: MIXED</div>
+</div>
+""", unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# CHART
+# MULTI-PANE CHART SETUP
 # -------------------------------------------------------------
 fig = make_subplots(
-    rows=3,
-    cols=1,
+    rows=3, cols=1,
     shared_xaxes=True,
-    vertical_spacing=0.03,
-    row_heights=[0.55, 0.25, 0.20],
-    subplot_titles=(
-        "Dual Option Price vs POC",
-        "Combined Straddle vs VWAP & TLOC",
-        "Trend Scalper Impulse (TS)"
-    )
+    vertical_spacing=0.04,
+    row_heights=[0.52, 0.28, 0.20],
+    subplot_titles=("Dual Option vs POC", "Combined Straddle vs VWAP & TLOC", "SMI Institutional Force")
 )
 
-# PUT
-fig.add_trace(
-    go.Scatter(
-        x=df["time"],
-        y=df["put_price"],
-        name="PUT Option (CMP)",
-        line=dict(color="#ff4d4d", width=2)
-    ),
-    row=1,
-    col=1
-)
+# Pane 1: Options & POCs
+fig.add_trace(go.Scatter(x=df["time"], y=df["put_price"], name="PUT CMP", line=dict(color="#ff4d4d", width=2)), row=1, col=1)
+fig.add_trace(go.Scatter(x=df["time"], y=df["call_price"], name="CALL CMP", line=dict(color="#00ff7f", width=2)), row=1, col=1)
+fig.add_hline(y=put_poc, line_dash="dash", line_color="#ff9999", annotation_text=f"PUT POC ({put_poc})", row=1, col=1)
+fig.add_hline(y=call_poc, line_dash="dash", line_color="#99ff99", annotation_text=f"CALL POC ({call_poc})", row=1, col=1)
+fig.add_trace(go.Scatter(x=df["time"], y=df["ts_dots"], mode="markers", marker=dict(color="#00ff00", size=7, symbol="circle"), name="TS Trigger Dot"), row=1, col=1)
 
-# CALL
-fig.add_trace(
-    go.Scatter(
-        x=df["time"],
-        y=df["call_price"],
-        name="CALL Option (CMP)",
-        line=dict(color="#00ff7f", width=2)
-    ),
-    row=1,
-    col=1
-)
+# Pane 2: Straddle vs VWAP & TLOC
+fig.add_trace(go.Scatter(x=df["time"], y=df["straddle"], name="Straddle (CE+PE)", line=dict(color="#ffa500", width=1.5)), row=2, col=1)
+fig.add_trace(go.Scatter(x=df["time"], y=df["straddle_vwap"], name="Straddle VWAP", line=dict(color="#ffff00", dash="dot", width=1.5)), row=2, col=1)
+fig.add_hline(y=straddle_tloc, line_dash="dash", line_color="#ff4444", annotation_text=f"TLOC ({straddle_tloc})", row=2, col=1)
 
-# PUT POC
-fig.add_hline(
-    y=put_poc,
-    line_dash="dash",
-    line_color="#ff9999",
-    annotation_text=f"PUT POC ({put_poc})",
-    row=1,
-    col=1
-)
+# Pane 3: Dynamic SMI Force Bars
+bar_colors = np.where(df["delta_force"] >= 0, "#00ff7f", "#ff4d4d")
+fig.add_trace(go.Bar(x=df["time"], y=df["delta_force"], marker_color=bar_colors, name="SMI Delta"), row=3, col=1)
 
-# CALL POC
-fig.add_hline(
-    y=call_poc,
-    line_dash="dash",
-    line_color="#99ff99",
-    annotation_text=f"CALL POC ({call_poc})",
-    row=1,
-    col=1
-)
-
-# TS DOTS
-fig.add_trace(
-    go.Scatter(
-        x=df["time"],
-        y=df["ts_dots"],
-        mode="markers",
-        marker=dict(
-            color="#00ff00",
-            size=8,
-            symbol="circle"
-        ),
-        name="TS Dot Trigger"
-    ),
-    row=1,
-    col=1
-)
-
-# STRADDLE
-fig.add_trace(
-    go.Scatter(
-        x=df["time"],
-        y=df["straddle"],
-        name="Straddle (CE+PE)",
-        line=dict(color="#ffa500", width=1.5)
-    ),
-    row=2,
-    col=1
-)
-
-# VWAP
-fig.add_trace(
-    go.Scatter(
-        x=df["time"],
-        y=df["straddle_vwap"],
-        name="Straddle VWAP",
-        line=dict(color="#ffff00", dash="dot")
-    ),
-    row=2,
-    col=1
-)
-
-# TLOC
-fig.add_hline(
-    y=straddle_tloc,
-    line_dash="dash",
-    line_color="#ff4444",
-    annotation_text=f"TLOC ({straddle_tloc})",
-    row=2,
-    col=1
-)
-
-# TREND IMPULSE
-fig.add_trace(
-    go.Bar(
-        x=df["time"],
-        y=np.sin(np.linspace(0, 10, len(df))),
-        marker_color="#ff4d4d",
-        name="Delta / SMI Force"
-    ),
-    row=3,
-    col=1
-)
-
-# LAYOUT
 fig.update_layout(
-    height=650,
+    height=660,
     template="plotly_dark",
-    margin=dict(
-        l=10,
-        r=10,
-        t=30,
-        b=10
-    ),
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1
-    )
+    margin=dict(l=8, r=8, t=26, b=8),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
 )
 
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
+st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------------------------------------------
 # POWER HISTORY
@@ -333,39 +139,10 @@ st.plotly_chart(
 st.subheader("📊 Power History (5 Strike Matrix)")
 
 power_data = {
-    "Time": [
-        "11:31 AM",
-        "11:30 AM",
-        "11:29 AM",
-        "11:28 AM",
-        "11:27 AM"
-    ],
-
-    "Call Power (CE Contracts)": [
-        "-5,92,558",
-        "-5,61,119",
-        "-5,61,119",
-        "-4,91,657",
-        "-4,73,160"
-    ],
-
-    "Put Power (PE Contracts)": [
-        "+16,16,893",
-        "+15,61,832",
-        "+15,61,832",
-        "+14,16,448",
-        "+13,86,372"
-    ],
-
-    "Market Sentiment": [
-        "🔴 Put Buyers Strong",
-        "🔴 Put Buyers Strong",
-        "🔴 Put Buyers Strong",
-        "🔴 Put Buyers Strong",
-        "🔴 Put Buyers Strong"
-    ]
+    "Time": ["11:31 AM", "11:30 AM", "11:29 AM", "11:28 AM", "11:27 AM"],
+    "Call Power (CE Contracts)": ["-5,92,558", "-5,61,119", "-5,61,119", "-4,91,657", "-4,73,160"],
+    "Put Power (PE Contracts)": ["+16,16,893", "+15,61,832", "+15,61,832", "+14,16,448", "+13,86,372"],
+    "Market Sentiment": ["🔴 Put Buyers Strong", "🔴 Put Buyers Strong", "🔴 Put Buyers Strong", "🔴 Put Buyers Strong", "🔴 Put Buyers Strong"]
 }
 
-st.table(
-    pd.DataFrame(power_data)
-)
+st.table(pd.DataFrame(power_data))
