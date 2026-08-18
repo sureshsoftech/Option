@@ -1,4 +1,6 @@
 import streamlit as st
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -6,10 +8,10 @@ import pyotp
 import time
 
 # -------------------------------------------------------------
-# 1. PAGE CONFIG & MOBILE STYLING
+# 1. PAGE CONFIG & STATIC MOBILE LAYOUT
 # -------------------------------------------------------------
 st.set_page_config(
-    page_title="Quant OptionScalp - Stream Mode",
+    page_title="Quant OptionScalp - Live Stream",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -46,70 +48,72 @@ def init_angel_session():
 
 smart_api = init_angel_session()
 
-# Header
+# Static Title Header (Rendered once)
 st.title("⚡ Quant OptionScalp Dashboard")
 connection_status = "🟢 Angel One API Live" if smart_api else "🟡 Auto-Feed Engine Active"
 st.caption(f"Session Status: {connection_status}")
 
 # -------------------------------------------------------------
-# 3. STATIC METRIC & TABLE PLACEHOLDERS
+# 3. DEDICATED IN-PLACE UPDATE PLACEHOLDERS
 # -------------------------------------------------------------
-metrics_placeholder = st.empty()
+metrics_box = st.empty()
+chart_box = st.empty()
+table_box = st.empty()
 
 # -------------------------------------------------------------
-# 4. INITIALIZE STATIC CHART CANVAS (Rendered ONCE)
+# 4. INITIAL ROLLING WINDOW SETUP
 # -------------------------------------------------------------
-# Base historical data setup
+n_bars = 40
 now = datetime.now()
-times = [now - timedelta(seconds=i*3) for i in range(25, -1, -1)]
+times = [now - timedelta(minutes=i) for i in range(n_bars, -1, -1)]
 
-init_df = pd.DataFrame({
-    "PUT Option (CMP)": np.linspace(72, 78, len(times)),
-    "CALL Option (CMP)": np.linspace(118, 112, len(times)),
-    "PUT POC": [76.0] * len(times),
-    "CALL POC": [114.0] * len(times)
-}, index=times)
-
-st.subheader("Dual Option Price vs POC")
-# Static chart initialized on load
-price_chart = st.line_chart(init_df, color=["#ff4d4d", "#00ff7f", "#ff9999", "#99ff99"])
-
-st.subheader("Combined Straddle vs VWAP")
-init_straddle_df = pd.DataFrame({
-    "Straddle (CE+PE)": init_df["PUT Option (CMP)"] + init_df["CALL Option (CMP)"],
-    "Straddle VWAP": (init_df["PUT Option (CMP)"] + init_df["CALL Option (CMP)"]) - 1.5,
-    "TLOC": [188.0] * len(times)
-}, index=times)
-
-straddle_chart = st.line_chart(init_straddle_df, color=["#ffa500", "#ffff00", "#ff4444"])
-
-table_placeholder = st.empty()
+np.random.seed(42)
+put_prices = list(np.maximum(20.0, 78.0 + np.cumsum(np.random.randn(len(times)) * 1.5)))
+call_prices = list(np.maximum(20.0, 112.0 - np.cumsum(np.random.randn(len(times)) * 1.2)))
+volumes = list(np.random.randint(2500, 8500, size=len(times)))
 
 # -------------------------------------------------------------
-# 5. LIVE TICK INJECTION (Extends lines without redrawing chart)
+# 5. SMOOTH IN-PLACE TICK STREAMING LOOP
 # -------------------------------------------------------------
-current_put = 78.0
-current_call = 112.0
-
 while True:
     current_time = datetime.now()
     
-    # Tick updates
-    put_tick = np.random.randn() * 0.8
-    call_tick = np.random.randn() * 0.7
-    current_put = float(np.round(max(20.0, current_put + put_tick), 2))
-    current_call = float(np.round(max(20.0, current_call - call_tick), 2))
+    # 1. Simulate new live tick
+    new_put = float(np.round(max(15.0, put_prices[-1] + (np.random.randn() * 1.2)), 2))
+    new_call = float(np.round(max(15.0, call_prices[-1] - (np.random.randn() * 1.1)), 2))
+    new_vol = int(np.random.randint(2500, 8500))
     
-    put_poc = 76.00
-    call_poc = 114.00
-    straddle_val = current_put + current_call
-    straddle_vwap = straddle_val - 1.2
-    straddle_tloc = 188.00
+    # Append tick and pop oldest (maintains rolling window)
+    times.append(current_time)
+    times.pop(0)
+    put_prices.append(new_put)
+    put_prices.pop(0)
+    call_prices.append(new_call)
+    call_prices.pop(0)
+    volumes.append(new_vol)
+    volumes.pop(0)
+    
+    # 2. Compute Quant Levels
+    put_poc = float(np.round(np.average(put_prices, weights=volumes), 2))
+    call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
+    
+    straddle_arr = np.array(put_prices) + np.array(call_prices)
+    vol_arr = np.array(volumes)
+    straddle_vwap_arr = np.cumsum(straddle_arr * vol_arr) / np.cumsum(vol_arr)
+    straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2))
+    
+    delta_force = np.convolve(np.random.randn(len(times)) * 2.2, np.ones(3)/3, mode='same')
+    
+    # Trend Scalper Trigger Dots
+    ts_dots = np.full(len(times), np.nan)
+    for i in range(1, len(times)):
+        if (put_prices[i] >= put_poc) and (delta_force[i] > 0.4):
+            ts_dots[i] = put_prices[i] + 1.2
 
-    # Trend logic
-    if current_put > put_poc and current_call < call_poc:
+    # 3. Dual Trend Determination
+    if new_put > put_poc and new_call < call_poc:
         atm_trend, atm_class = "BEARISH", "status-bearish"
-    elif current_call > call_poc and current_put < put_poc:
+    elif new_call > call_poc and new_put < put_poc:
         atm_trend, atm_class = "BULLISH", "status-bullish"
     else:
         atm_trend, atm_class = "SIDEWAYS", "status-wait"
@@ -118,43 +122,63 @@ while True:
     market_status = "ACTIVE ENTRY" if atm_trend == multi_trend else "WAIT / MIXED"
     market_class = atm_class if atm_trend == multi_trend else "status-wait"
 
-    # --- 1. UPDATE ONLY NUMERICAL BADGES ---
-    metrics_placeholder.markdown(f"""
+    # --- IN-PLACE UPDATE 1: Top Metric Badges ---
+    metrics_box.markdown(f"""
     <div class="metric-grid">
-        <div class="metric-card status-bearish">PUT: ₹{current_put:.2f}</div>
-        <div class="metric-card status-bullish">CALL: ₹{current_call:.2f}</div>
-        <div class="metric-card status-wait">STRADDLE: ₹{straddle_val:.2f}</div>
+        <div class="metric-card status-bearish">PUT POC: ₹{put_poc:.2f}</div>
+        <div class="metric-card status-bullish">CALL POC: ₹{call_poc:.2f}</div>
+        <div class="metric-card status-wait">TLOC: ₹{straddle_tloc:.2f}</div>
         <div class="metric-card {atm_class}">ATM: {atm_trend}</div>
         <div class="metric-card {multi_class}">MULTI: {multi_trend}</div>
         <div class="metric-card {market_class}">MARKET: {market_status}</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # --- 2. STREAM NEW DATA POINTS TO EXISTING CHARTS (NO REDRAW) ---
-    new_price_point = pd.DataFrame({
-        "PUT Option (CMP)": [current_put],
-        "CALL Option (CMP)": [current_call],
-        "PUT POC": [put_poc],
-        "CALL POC": [call_poc]
-    }, index=[current_time])
+    # --- IN-PLACE UPDATE 2: Multi-Pane Live Chart ---
+    fig = make_subplots(
+        rows=3, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.04,
+        row_heights=[0.52, 0.28, 0.20],
+        subplot_titles=("Dual Option vs POC", "Combined Straddle vs VWAP & TLOC", "SMI Institutional Force")
+    )
     
-    new_straddle_point = pd.DataFrame({
-        "Straddle (CE+PE)": [straddle_val],
-        "Straddle VWAP": [straddle_vwap],
-        "TLOC": [straddle_tloc]
-    }, index=[current_time])
+    # Pane 1: Option Lines + POCs + TS Dots
+    fig.add_trace(go.Scatter(x=times, y=put_prices, name="PUT CMP", line=dict(color="#ff4d4d", width=2)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=times, y=call_prices, name="CALL CMP", line=dict(color="#00ff7f", width=2)), row=1, col=1)
+    fig.add_hline(y=put_poc, line_dash="dash", line_color="#ff9999", annotation_text=f"PUT POC ({put_poc})", row=1, col=1)
+    fig.add_hline(y=call_poc, line_dash="dash", line_color="#99ff99", annotation_text=f"CALL POC ({call_poc})", row=1, col=1)
+    fig.add_trace(go.Scatter(x=times, y=ts_dots, mode="markers", marker=dict(color="#00ff00", size=7, symbol="circle"), name="TS Trigger Dot"), row=1, col=1)
 
-    # Append tick to chart lines
-    price_chart.add_rows(new_price_point)
-    straddle_chart.add_rows(new_straddle_point)
+    # Pane 2: Combined Straddle vs VWAP & TLOC
+    fig.add_trace(go.Scatter(x=times, y=straddle_arr, name="Straddle (CE+PE)", line=dict(color="#ffa500", width=1.5)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=times, y=straddle_vwap_arr, name="Straddle VWAP", line=dict(color="#ffff00", dash="dot", width=1.5)), row=2, col=1)
+    fig.add_hline(y=straddle_tloc, line_dash="dash", line_color="#ff4444", annotation_text=f"TLOC ({straddle_tloc})", row=2, col=1)
 
-    # --- 3. REWRITE POWER MATRIX TABLE ---
+    # Pane 3: SMI Dynamic Delta Bars
+    bar_colors = np.where(delta_force >= 0, "#00ff7f", "#ff4d4d")
+    fig.add_trace(go.Bar(x=times, y=delta_force, marker_color=bar_colors, name="SMI Delta"), row=3, col=1)
+
+    fig.update_layout(
+        height=660,
+        template="plotly_dark",
+        margin=dict(l=8, r=8, t=26, b=8),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+
+    try:
+        chart_box.plotly_chart(fig, width="stretch")
+    except Exception:
+        chart_box.plotly_chart(fig, use_container_width=True)
+
+    # --- IN-PLACE UPDATE 3: Power Matrix Table ---
     power_data = {
         "Time": [current_time.strftime("%I:%M:%S %p"), "11:30 AM", "11:29 AM", "11:28 AM", "11:27 AM"],
         "Call Power (CE Contracts)": ["-5,92,558", "-5,61,119", "-5,61,119", "-4,91,657", "-4,73,160"],
         "Put Power (PE Contracts)": ["+16,16,893", "+15,61,832", "+15,61,832", "+14,16,448", "+13,86,372"],
         "Market Sentiment": ["🔴 Put Buyers Strong", "🔴 Put Buyers Strong", "🔴 Put Buyers Strong", "🔴 Put Buyers Strong", "🔴 Put Buyers Strong"]
     }
-    table_placeholder.table(pd.DataFrame(power_data))
+    table_box.table(pd.DataFrame(power_data))
 
+    # Pause 2 seconds between updates (Smooth, zero screen-flashing)
     time.sleep(2)
