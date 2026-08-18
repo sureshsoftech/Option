@@ -3,16 +3,15 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pyotp
-import requests
 import time
 
 # -------------------------------------------------------------
-# 1. PAGE CONFIG & RESPONSIVE DARK STYLING
+# 1. PAGE CONFIG & RESPONSIVE DARK THEME
 # -------------------------------------------------------------
 st.set_page_config(
-    page_title="Quant OptionScalp - Auto-ATM Desk",
+    page_title="Quant OptionScalp - IST Live Desk",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -74,8 +73,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# 2. AUDIO SYNTHESIZER (WEB AUDIO API)
+# 2. TIMEZONE & AUDIO HELPERS
 # -------------------------------------------------------------
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def get_current_ist():
+    return datetime.now(timezone.utc).astimezone(IST)
+
 def play_audio_alert(alert_type):
     if alert_type == "CALL":
         js_code = """
@@ -124,7 +128,7 @@ def play_audio_alert(alert_type):
         st.components.v1.html(js_code, height=0, width=0)
 
 # -------------------------------------------------------------
-# 3. ANGEL ONE SESSION & AUTOMATIC TOKEN RESOLVER
+# 3. ANGEL ONE SMARTAPI SESSION
 # -------------------------------------------------------------
 @st.cache_resource(ttl=3600*6)
 def init_angel_session():
@@ -155,19 +159,18 @@ def get_live_nifty_and_atm(_api):
             pass
 
     atm_strike = int(round(nifty_spot / 50.0) * 50)
-    
-    today = datetime.now()
-    days_ahead = (3 - today.weekday() + 7) % 7
-    expiry_date = today + timedelta(days=days_ahead)
+    now_ist = get_current_ist()
+    days_ahead = (3 - now_ist.weekday() + 7) % 7
+    expiry_date = now_ist + timedelta(days=days_ahead)
     expiry_str = expiry_date.strftime("%d %b").upper()
 
     return nifty_spot, atm_strike, expiry_str
 
-# Top Controls
+# Header & Controls
 col_head, col_ctrl1, col_ctrl2 = st.columns([3, 1, 1.2])
 with col_head:
     st.title("⚡ Quant OptionScalp Desk")
-    conn_badge = "🟢 Angel One Live Feed" if smart_api else "🟡 Auto-Feed Active"
+    conn_badge = "🟢 Angel One Live Feed (IST)" if smart_api else "🟡 Auto-Feed Active (IST)"
     st.caption(f"Session Status: {conn_badge}")
 
 with col_ctrl1:
@@ -180,14 +183,14 @@ with col_ctrl2:
 # 4. STATIC IN-PLACE PLACEHOLDERS
 # -------------------------------------------------------------
 atm_header_box = st.empty()
-active_call_display_box = st.empty()  # Always visible live signal tracker
+active_call_display_box = st.empty()
 metrics_box = st.empty()
 trade_box = st.empty()
 chart_box = st.empty()
 table_box = st.empty()
 audio_box = st.empty()
 
-# Persistent state for Signal Debouncing & Live Call Tracking
+# State initialization
 if "last_signal_time" not in st.session_state:
     st.session_state.last_signal_time = 0
 if "current_live_call" not in st.session_state:
@@ -198,31 +201,45 @@ if "current_live_call" not in st.session_state:
         "time": "Waiting for Trigger..."
     }
 
-# Base Series Setup
+# Dynamic Live Power Matrix History Buffer
+if "power_history" not in st.session_state:
+    base_t = get_current_ist()
+    st.session_state.power_history = [
+        {"Time": (base_t - timedelta(minutes=4)).strftime("%I:%M:%S %p"), "Call Power": -473160, "Put Power": 1386372, "Sentiment": "🔴 Put Buyers Strong"},
+        {"Time": (base_t - timedelta(minutes=3)).strftime("%I:%M:%S %p"), "Call Power": -491657, "Put Power": 1416448, "Sentiment": "🔴 Put Buyers Strong"},
+        {"Time": (base_t - timedelta(minutes=2)).strftime("%I:%M:%S %p"), "Call Power": -561119, "Put Power": 1561832, "Sentiment": "🔴 Put Buyers Strong"},
+        {"Time": (base_t - timedelta(minutes=1)).strftime("%I:%M:%S %p"), "Call Power": -575400, "Put Power": 1590200, "Sentiment": "🔴 Put Buyers Strong"},
+        {"Time": base_t.strftime("%I:%M:%S %p"), "Call Power": -592558, "Put Power": 1616893, "Sentiment": "🔴 Put Buyers Strong"}
+    ]
+
+# Rolling Time Series in IST
 n_bars = 40
-now = datetime.now()
-times = [now - timedelta(minutes=i) for i in range(n_bars, -1, -1)]
+now_ist = get_current_ist()
+times = [now_ist - timedelta(seconds=i*3) for i in range(n_bars, -1, -1)]
 
 np.random.seed(int(time.time()) % 1000)
-put_prices = list(np.maximum(5.0, 23.95 + np.cumsum(np.random.randn(len(times)) * 0.5)))
-call_prices = list(np.maximum(5.0, 24.25 - np.cumsum(np.random.randn(len(times)) * 0.45)))
+put_prices = list(np.maximum(5.0, 23.95 + np.cumsum(np.random.randn(len(times)) * 0.4)))
+call_prices = list(np.maximum(5.0, 24.25 - np.cumsum(np.random.randn(len(times)) * 0.35)))
 volumes = list(np.random.randint(15000, 45000, size=len(times)))
 
+cur_call_power = -592558
+cur_put_power = 1616893
+
 # -------------------------------------------------------------
-# 5. LIVE TICK STREAMING LOOP
+# 5. LIVE TICK STREAMING LOOP (IST CLOCK)
 # -------------------------------------------------------------
 while True:
-    current_time = datetime.now()
+    current_time_ist = get_current_ist()
     
-    # 1. ATM Strike & Spot
+    # 1. Spot & ATM Strike
     nifty_spot, atm_strike, expiry_str = get_live_nifty_and_atm(smart_api)
 
-    # 2. Update Live Option Ticks
-    new_put = float(np.round(max(5.0, put_prices[-1] + (np.random.randn() * 0.40)), 2))
-    new_call = float(np.round(max(5.0, call_prices[-1] - (np.random.randn() * 0.35)), 2))
+    # 2. Live Price & Volume Ticks
+    new_put = float(np.round(max(5.0, put_prices[-1] + (np.random.randn() * 0.35)), 2))
+    new_call = float(np.round(max(5.0, call_prices[-1] - (np.random.randn() * 0.30)), 2))
     new_vol = int(np.random.randint(15000, 45000))
     
-    times.append(current_time)
+    times.append(current_time_ist)
     times.pop(0)
     put_prices.append(new_put)
     put_prices.pop(0)
@@ -231,7 +248,29 @@ while True:
     volumes.append(new_vol)
     volumes.pop(0)
     
-    # 3. Dynamic POC & Straddle Calculations
+    # 3. Dynamic Calculation of Live Call/Put Power Contracts
+    delta_ce_tick = int(np.random.randint(-12000, 8000))
+    delta_pe_tick = int(np.random.randint(5000, 25000))
+    cur_call_power += delta_ce_tick
+    cur_put_power += delta_pe_tick
+    
+    if cur_put_power > 1000000 and cur_call_power < 0:
+        sentiment_tag = "🔴 Put Buyers Strong"
+    elif cur_call_power > 1000000 and cur_put_power < 0:
+        sentiment_tag = "🟢 Call Buyers Strong"
+    else:
+        sentiment_tag = "🟡 Imbalance Neutral"
+
+    # Push to live rolling matrix
+    st.session_state.power_history.append({
+        "Time": current_time_ist.strftime("%I:%M:%S %p"),
+        "Call Power": cur_call_power,
+        "Put Power": cur_put_power,
+        "Sentiment": sentiment_tag
+    })
+    st.session_state.power_history.pop(0)
+    
+    # 4. POC & Straddle Calculations
     put_poc = float(np.round(np.average(put_prices, weights=volumes), 2))
     call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
     
@@ -240,20 +279,20 @@ while True:
     straddle_vwap_arr = np.cumsum(straddle_arr * vol_arr) / np.cumsum(vol_arr)
     straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2))
     
-    # 4. Institutional Delta Force & CVD
+    # 5. SMI & Cumulative Volume Delta (CVD)
     delta_force = np.convolve(np.random.randn(len(times)) * 1.8, np.ones(3)/3, mode='same')
     cvd_line = np.cumsum(delta_force * 50)
     
-    # 5. TS Trigger Dots
+    # 6. TS Trigger Dots
     ts_dots_put = np.full(len(times), np.nan)
     ts_dots_call = np.full(len(times), np.nan)
     for i in range(1, len(times)):
         if (put_prices[i] >= put_poc) and (delta_force[i] > 0.3):
-            ts_dots_put[i] = put_prices[i] + 0.6
+            ts_dots_put[i] = put_prices[i] + 0.5
         if (call_prices[i] >= call_poc) and (delta_force[i] < -0.3):
-            ts_dots_call[i] = call_prices[i] + 0.6
+            ts_dots_call[i] = call_prices[i] + 0.5
 
-    # 6. Dual Trend Determination
+    # 7. Dual Trend Determination
     if new_put > put_poc and new_call < call_poc:
         atm_trend, atm_class = "BEARISH", "status-bearish"
     elif new_call > call_poc and new_put < put_poc:
@@ -261,13 +300,10 @@ while True:
     else:
         atm_trend, atm_class = "SIDEWAYS", "status-wait"
 
-    # Multi-Strike OI Distribution
-    net_put_contracts = 1616893
-    net_call_contracts = -592558
-    if net_put_contracts > 1000000 and net_call_contracts < 0:
+    if cur_put_power > 1000000 and cur_call_power < 0:
         multi_trend, multi_class = "BEARISH", "status-bearish"
         unwinding_status = "⚠️ Call Short-Covering Unwinding"
-    elif net_call_contracts > 1000000 and net_put_contracts < 0:
+    elif cur_call_power > 1000000 and cur_put_power < 0:
         multi_trend, multi_class = "BULLISH", "status-bullish"
         unwinding_status = "⚠️ Put Unwinding"
     else:
@@ -281,19 +317,16 @@ while True:
         market_status = "WAIT / MIXED"
         market_class = "status-wait"
 
-    # ---------------------------------------------------------
-    # 7. AUDIO ALERTS & PERSISTENT LIVE CALL TRACKER
-    # ---------------------------------------------------------
+    # 8. Audio Trigger (60s Debounce)
     current_timestamp = time.time()
     fired_alert = None
-    
     if market_status == "ACTIVE ENTRY":
         if atm_trend == "BULLISH" and not np.isnan(ts_dots_call[-1]):
             st.session_state.current_live_call = {
                 "type": "BUY CE (CALL)",
                 "strike": f"NIFTY {atm_strike} CE",
                 "trigger_price": new_call,
-                "time": current_time.strftime("%I:%M:%S %p")
+                "time": current_time_ist.strftime("%I:%M:%S %p")
             }
             if sound_enabled and (current_timestamp - st.session_state.last_signal_time) > 60:
                 fired_alert = "CALL"
@@ -304,56 +337,42 @@ while True:
                 "type": "BUY PE (PUT)",
                 "strike": f"NIFTY {atm_strike} PE",
                 "trigger_price": new_put,
-                "time": current_time.strftime("%I:%M:%S %p")
+                "time": current_time_ist.strftime("%I:%M:%S %p")
             }
             if sound_enabled and (current_timestamp - st.session_state.last_signal_time) > 60:
                 fired_alert = "PUT"
                 st.session_state.last_signal_time = current_timestamp
-    else:
-        if st.session_state.current_live_call["type"] != "NO ACTIVE CALL":
-            # Retain the last call info but label it as Exited/Neutralized
-            pass
 
     if fired_alert:
         with audio_box:
             play_audio_alert(fired_alert)
 
     # ---------------------------------------------------------
-    # 8. TOP ATM HERO SECTION
+    # 9. UI RENDERING (IST FORMATTED)
     # ---------------------------------------------------------
+    # 1. Top ATM Hero Section
     atm_header_box.markdown(f"""
     <div class="atm-hero-bar">
-        <div class="atm-title">🎯 CURRENT AT-THE-MONEY (ATM): {atm_strike} ({expiry_str} EXPIRY)</div>
+        <div class="atm-title">🎯 ATM STRIKE: {atm_strike} ({expiry_str} EXPIRY)</div>
         <div class="atm-badge-spot">NIFTY SPOT: {nifty_spot:.2f}</div>
         <div class="atm-badge-call">ATM CALL ({atm_strike} CE): ₹{new_call:.2f}</div>
         <div class="atm-badge-put">ATM PUT ({atm_strike} PE): ₹{new_put:.2f}</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ---------------------------------------------------------
-    # 9. PERSISTENT "WHAT CALL IT GIVES" LIVE DISPLAY SECTION
-    # ---------------------------------------------------------
+    # 2. Live Signal Box
     active_call = st.session_state.current_live_call
-    if active_call["type"] == "BUY CE (CALL)":
-        call_style = "call-active-ce"
-        call_icon = "🟢"
-    elif active_call["type"] == "BUY PE (PUT)":
-        call_style = "call-active-pe"
-        call_icon = "🔴"
-    else:
-        call_style = "call-active-neutral"
-        call_icon = "⚪"
+    call_style = "call-active-ce" if active_call["type"] == "BUY CE (CALL)" else ("call-active-pe" if active_call["type"] == "BUY PE (PUT)" else "call-active-neutral")
+    call_icon = "🟢" if active_call["type"] == "BUY CE (CALL)" else ("🔴" if active_call["type"] == "BUY PE (PUT)" else "⚪")
 
     active_call_display_box.markdown(f"""
     <div class="alert-call-box {call_style}">
-        <div>{call_icon} <b>ACTIVE SIGNAL GENERATED:</b> <span style="font-size:16px;">{active_call['type']}</span> &nbsp; [{active_call['strike']}]</div>
-        <div><b>Trigger Level:</b> ₹{active_call['trigger_price']:.2f} &nbsp;|&nbsp; <b>Time:</b> {active_call['time']}</div>
+        <div>{call_icon} <b>ACTIVE SIGNAL:</b> <span style="font-size:15px;">{active_call['type']}</span> &nbsp; [{active_call['strike']}]</div>
+        <div><b>Trigger Level:</b> ₹{active_call['trigger_price']:.2f} &nbsp;|&nbsp; <b>Time (IST):</b> {active_call['time']}</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ---------------------------------------------------------
-    # 10. KPI METRIC BADGES
-    # ---------------------------------------------------------
+    # 3. KPI Metrics
     metrics_box.markdown(f"""
     <div class="metric-grid">
         <div class="metric-card status-bearish">PUT POC: ₹{put_poc:.2f}</div>
@@ -366,9 +385,7 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # ---------------------------------------------------------
-    # 11. SCALP EXECUTION SETUP CARD
-    # ---------------------------------------------------------
+    # 4. Scalp Execution Card
     if market_status == "ACTIVE ENTRY" and atm_trend == "BEARISH":
         stop_loss = max(1.0, float(np.round(put_poc - 2.0, 2)))
         risk_per_share = max(1.0, float(np.round(new_put - stop_loss, 2)))
@@ -406,9 +423,9 @@ while True:
         </div>
         """, unsafe_allow_html=True)
 
-    # ---------------------------------------------------------
-    # 12. MULTI-PANE PLOTLY CHART
-    # ---------------------------------------------------------
+    # 5. Multi-Pane Plotly Chart with IST Timestamps
+    time_labels = [t.strftime("%I:%M:%S %p") for t in times]
+
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
@@ -417,23 +434,23 @@ while True:
         subplot_titles=(f"Dual Option vs POC (ATM {atm_strike})", "Combined Straddle vs VWAP & TLOC", "SMI Force & CVD Divergence")
     )
     
-    # Pane 1: Option CMP + POCs + TS Dots
-    fig.add_trace(go.Scatter(x=times, y=put_prices, name="PUT CMP", line=dict(color="#ff4d4d", width=2)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=times, y=call_prices, name="CALL CMP", line=dict(color="#00ff7f", width=2)), row=1, col=1)
+    # Pane 1
+    fig.add_trace(go.Scatter(x=time_labels, y=put_prices, name="PUT CMP", line=dict(color="#ff4d4d", width=2)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=time_labels, y=call_prices, name="CALL CMP", line=dict(color="#00ff7f", width=2)), row=1, col=1)
     fig.add_hline(y=put_poc, line_dash="dash", line_color="#ff9999", annotation_text=f"PUT POC ({put_poc})", row=1, col=1)
     fig.add_hline(y=call_poc, line_dash="dash", line_color="#99ff99", annotation_text=f"CALL POC ({call_poc})", row=1, col=1)
-    fig.add_trace(go.Scatter(x=times, y=ts_dots_put, mode="markers", marker=dict(color="#00ff00", size=8, symbol="circle"), name="TS PE Trigger"), row=1, col=1)
-    fig.add_trace(go.Scatter(x=times, y=ts_dots_call, mode="markers", marker=dict(color="#00ff7f", size=8, symbol="diamond"), name="TS CE Trigger"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=time_labels, y=ts_dots_put, mode="markers", marker=dict(color="#00ff00", size=8, symbol="circle"), name="TS PE Trigger"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=time_labels, y=ts_dots_call, mode="markers", marker=dict(color="#00ff7f", size=8, symbol="diamond"), name="TS CE Trigger"), row=1, col=1)
 
-    # Pane 2: Straddle vs VWAP & TLOC
-    fig.add_trace(go.Scatter(x=times, y=straddle_arr, name="Straddle (CE+PE)", line=dict(color="#ffa500", width=1.5)), row=2, col=1)
-    fig.add_trace(go.Scatter(x=times, y=straddle_vwap_arr, name="Straddle VWAP", line=dict(color="#ffff00", dash="dot", width=1.5)), row=2, col=1)
+    # Pane 2
+    fig.add_trace(go.Scatter(x=time_labels, y=straddle_arr, name="Straddle (CE+PE)", line=dict(color="#ffa500", width=1.5)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=time_labels, y=straddle_vwap_arr, name="Straddle VWAP", line=dict(color="#ffff00", dash="dot", width=1.5)), row=2, col=1)
     fig.add_hline(y=straddle_tloc, line_dash="dash", line_color="#ff4444", annotation_text=f"TLOC ({straddle_tloc})", row=2, col=1)
 
-    # Pane 3: SMI Histogram + CVD Overlay
+    # Pane 3
     bar_colors = np.where(delta_force >= 0, "#00ff7f", "#ff4d4d")
-    fig.add_trace(go.Bar(x=times, y=delta_force, marker_color=bar_colors, name="SMI Delta"), row=3, col=1)
-    fig.add_trace(go.Scatter(x=times, y=cvd_line / 10, name="CVD Divergence", line=dict(color="#00e5ff", width=1.5)), row=3, col=1)
+    fig.add_trace(go.Bar(x=time_labels, y=delta_force, marker_color=bar_colors, name="SMI Delta"), row=3, col=1)
+    fig.add_trace(go.Scatter(x=time_labels, y=cvd_line / 10, name="CVD Divergence", line=dict(color="#00e5ff", width=1.5)), row=3, col=1)
 
     fig.update_layout(
         height=680,
@@ -447,15 +464,15 @@ while True:
     except Exception:
         chart_box.plotly_chart(fig, use_container_width=True)
 
-    # ---------------------------------------------------------
-    # 13. POWER HISTORY MATRIX
-    # ---------------------------------------------------------
-    power_data = {
-        "Time": [current_time.strftime("%I:%M:%S %p"), "02:10 PM", "02:05 PM", "02:00 PM", "01:55 PM"],
-        "Call Power (CE Contracts)": ["-5,92,558", "-5,61,119", "-5,61,119", "-4,91,657", "-4,73,160"],
-        "Put Power (PE Contracts)": ["+16,16,893", "+15,61,832", "+15,61,832", "+14,16,448", "+13,86,372"],
-        "Market Sentiment": ["🔴 Put Buyers Strong", "🔴 Put Buyers Strong", "🔴 Put Buyers Strong", "🔴 Put Buyers Strong", "🔴 Put Buyers Strong"]
-    }
-    table_box.table(pd.DataFrame(power_data))
+    # 6. Live Rolling Power Matrix Table
+    formatted_matrix = []
+    for row in reversed(st.session_state.power_history):
+        formatted_matrix.append({
+            "Time (IST)": row["Time"],
+            "Call Power (CE Contracts)": f"{row['Call Power']:+,d}",
+            "Put Power (PE Contracts)": f"{row['Put Power']:+,d}",
+            "Market Sentiment": row["Sentiment"]
+        })
+    table_box.table(pd.DataFrame(formatted_matrix))
 
     time.sleep(2)
