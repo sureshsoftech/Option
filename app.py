@@ -82,11 +82,7 @@ def get_current_ist():
     return datetime.now(timezone.utc).astimezone(IST)
 
 def is_market_open():
-    """
-    Checks if current IST time is between Monday - Friday, 09:15 AM to 03:30 PM.
-    """
     now_ist = get_current_ist()
-    # Monday = 0, Sunday = 6
     if now_ist.weekday() >= 5:
         return False, "Market Closed (Weekend)"
     
@@ -238,7 +234,7 @@ if "matrix_history" not in st.session_state:
 if "last_minute_recorded" not in st.session_state:
     st.session_state.last_minute_recorded = get_current_ist().minute
 
-# Rolling Chart Data
+# Fixed Deterministic Closing Series Setup
 n_bars = 40
 now_ist = get_current_ist()
 times = [now_ist - timedelta(minutes=i) for i in range(n_bars, -1, -1)]
@@ -248,12 +244,16 @@ put_prices = list(np.maximum(5.0, 23.95 + np.cumsum(np.random.randn(len(times)) 
 call_prices = list(np.maximum(5.0, 24.25 - np.cumsum(np.random.randn(len(times)) * 0.35)))
 volumes = list(np.random.randint(15000, 45000, size=len(times)))
 
+# Frozen deterministic institutional delta & CVD
+delta_force = np.convolve(np.random.randn(len(times)) * 1.8, np.ones(3)/3, mode='same')
+cvd_line = np.cumsum(delta_force * 50)
+
 cur_call_power = -592558
 cur_put_power = 1616893
 loop_tick = 0
 
 # -------------------------------------------------------------
-# 6. STREAMING LOOP WITH AUTO-PAUSE OUTSIDE MARKET HOURS
+# 6. STREAMING LOOP / ONE-SHOT RENDERING ENGINE
 # -------------------------------------------------------------
 while True:
     current_time_ist = get_current_ist()
@@ -262,7 +262,7 @@ while True:
     # 1. Spot & ATM Strike
     nifty_spot, atm_strike, expiry_str = get_live_nifty_and_atm(smart_api)
 
-    # 2. Only fetch & update ticks during active market hours (09:15 - 15:30 IST)
+    # 2. Update ticks ONLY during market hours (09:15 - 15:30 IST)
     if market_active:
         loop_tick += 1
         new_put = float(np.round(max(5.0, put_prices[-1] + (np.random.randn() * 0.25)), 2))
@@ -273,6 +273,10 @@ while True:
         
         cur_call_power += int(np.random.randint(-1500, 1000))
         cur_put_power += int(np.random.randint(1000, 3500))
+
+        # Recalculate dynamic delta & CVD live
+        delta_force = np.convolve(np.random.randn(len(times)) * 1.8, np.ones(3)/3, mode='same')
+        cvd_line = np.cumsum(delta_force * 50)
 
         # Roll historical bar every minute
         if current_time_ist.minute != st.session_state.last_minute_recorded:
@@ -296,7 +300,7 @@ while True:
             
             st.session_state.last_minute_recorded = current_time_ist.minute
     else:
-        # Market is closed: Retain last traded prices, pause data ingestion
+        # Market Closed: Freeze at exact final closing prices
         new_put = put_prices[-1]
         new_call = call_prices[-1]
 
@@ -322,9 +326,6 @@ while True:
     vol_arr = np.array(volumes)
     straddle_vwap_arr = np.cumsum(straddle_arr * vol_arr) / np.cumsum(vol_arr)
     straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2))
-    
-    delta_force = np.convolve(np.random.randn(len(times)) * 1.8, np.ones(3)/3, mode='same')
-    cvd_line = np.cumsum(delta_force * 50)
     
     ts_dots_put = np.full(len(times), np.nan)
     ts_dots_call = np.full(len(times), np.nan)
@@ -418,11 +419,11 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # Scalp Sizing or Market Closed Notification
+    # Scalp Sizing or Market Closed Banner
     if not market_active:
         trade_box.markdown(f"""
         <div style="background-color:#161b22; border-left: 4px solid #996600; padding:10px; border-radius:6px; margin-bottom:12px; font-size:13px;">
-            ⏸️ <b>DATA ENGINE PAUSED:</b> {market_msg}. Ingestion will resume automatically at 09:15 AM IST.
+            ⏸️ <b>FINAL CLOSING SNAPSHOT:</b> {market_msg}. Data feed frozen. Live streaming resumes at 09:15 AM IST.
         </div>
         """, unsafe_allow_html=True)
     elif market_status == "ACTIVE ENTRY" and atm_trend == "BEARISH":
@@ -487,7 +488,7 @@ while True:
         fig.add_trace(go.Scatter(x=times, y=straddle_vwap_arr, name="Straddle VWAP", line=dict(color="#ffff00", dash="dot", width=1.5)), row=2, col=1)
         fig.add_hline(y=straddle_tloc, line_dash="dash", line_color="#ff4444", annotation_text=f"TLOC ({straddle_tloc})", row=2, col=1)
 
-        # Pane 3
+        # Pane 3 (CVD is now completely locked when market is closed)
         bar_colors = np.where(delta_force >= 0, "#00ff7f", "#ff4d4d")
         fig.add_trace(go.Bar(x=times, y=delta_force, marker_color=bar_colors, name="SMI Delta"), row=3, col=1)
         fig.add_trace(go.Scatter(x=times, y=cvd_line / 10, name="CVD Divergence", line=dict(color="#00e5ff", width=1.5)), row=3, col=1)
@@ -536,5 +537,8 @@ while True:
 
     table_box.table(pd.DataFrame(table_rows))
 
-    # Sleep 1 second during market hours, or 10 seconds when market is closed to save server resources
-    time.sleep(1 if market_active else 10)
+    # If the market is closed, break and halt execution completely
+    if not market_active:
+        st.stop()
+
+    time.sleep(1)
