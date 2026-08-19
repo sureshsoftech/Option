@@ -279,6 +279,7 @@ loop_tick = 0
 # 6. SENSIBULL 20-STRIKE OPEN INTEREST GENERATOR
 # -------------------------------------------------------------
 def build_sensibull_oi_data(atm_strike):
+    # Pure numeric strike integers
     strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
     
     # 21 strikes baseline matching Sensibull distribution
@@ -497,10 +498,9 @@ while True:
         """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 9. SENSIBULL OPEN INTEREST GRAPH
+    # 9. SENSIBULL OPEN INTEREST GRAPH (CLEAN NUMERIC X-AXIS)
     # ---------------------------------------------------------
     strikes, pe_base_vals, ce_base_vals = build_sensibull_oi_data(atm_strike)
-    strike_labels = [str(s) for s in strikes]
     
     total_pe_oi = sum(pe_base_vals)
     total_ce_oi = sum(ce_base_vals)
@@ -516,37 +516,35 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # Render Open Interest & Scalp Chart on stable intervals
     if loop_tick % 3 == 0 or loop_tick == 1 or not market_active:
         fig_oi = go.Figure()
 
         # Solid Put OI Bars (Green)
         fig_oi.add_trace(go.Bar(
             name="Put OI",
-            x=strike_labels,
+            x=strikes,
             y=pe_base_vals,
-            marker_color="#22c55e"
+            marker_color="#22c55e",
+            width=20
         ))
 
         # Solid Call OI Bars (Red)
         fig_oi.add_trace(go.Bar(
             name="Call OI",
-            x=strike_labels,
+            x=strikes,
             y=ce_base_vals,
-            marker_color="#ef4444"
+            marker_color="#ef4444",
+            width=20
         ))
 
-        atm_str_label = str(atm_strike)
-
-        # Standard layout configuration with clean shapes
+        # Direct layout with numeric strike alignment and Spot overlay
         fig_oi.update_layout(
             title="📊 Open Interest & OI Distribution (10 Strikes Left & Right)",
             height=460,
             template="plotly_dark",
             uirevision="constant_oi",
             barmode="group",
-            bargap=0.18,
-            bargroupgap=0.04,
+            bargap=0.2,
             margin=dict(l=10, r=10, t=40, b=10),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             yaxis=dict(
@@ -557,15 +555,18 @@ while True:
             ),
             xaxis=dict(
                 title="Strike Prices",
-                type="category",
+                tickmode="array",
+                tickvals=strikes,
+                ticktext=[str(s) for s in strikes],
                 tickangle=-45,
+                range=[strikes[0] - 35, strikes[-1] + 35],
                 gridcolor="#1f2937"
             ),
             shapes=[
                 dict(
                     type="line",
-                    x0=atm_str_label,
-                    x1=atm_str_label,
+                    x0=fut_price,
+                    x1=fut_price,
                     y0=0,
                     y1=1,
                     yref="paper",
@@ -574,7 +575,7 @@ while True:
             ],
             annotations=[
                 dict(
-                    x=atm_str_label,
+                    x=fut_price,
                     y=1,
                     yref="paper",
                     text=f"NIFTY {fut_price:.2f}",
@@ -586,9 +587,9 @@ while True:
         )
 
         try:
-            oi_chart_box.plotly_chart(fig_oi, width="stretch", key=f"oi_chart_{loop_tick}", config={"displayModeBar": False})
+            oi_chart_box.plotly_chart(fig_oi, width="stretch", config={"displayModeBar": False})
         except Exception:
-            oi_chart_box.plotly_chart(fig_oi, use_container_width=True, key=f"oi_chart_{loop_tick}", config={"displayModeBar": False})
+            oi_chart_box.plotly_chart(fig_oi, use_container_width=True, config={"displayModeBar": False})
 
         # -----------------------------------------------------
         # 10. MULTI-PANE SCALPING CHART
@@ -638,9 +639,9 @@ while True:
         )
 
         try:
-            chart_box.plotly_chart(fig, width="stretch", key=f"scalp_chart_{loop_tick}", config={"displayModeBar": False})
+            chart_box.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
         except Exception:
-            chart_box.plotly_chart(fig, use_container_width=True, key=f"scalp_chart_{loop_tick}", config={"displayModeBar": False})
+            chart_box.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     # ---------------------------------------------------------
     # 11. POWER MATRIX TABLE
