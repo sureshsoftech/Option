@@ -11,7 +11,7 @@ import time
 # 1. PAGE CONFIG & RESPONSIVE DARK THEME
 # -------------------------------------------------------------
 st.set_page_config(
-    page_title="Quant OptionScalp & Sensibull OI Desk",
+    page_title="Quant OptionScalp & Sensibull Desk",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -281,13 +281,11 @@ loop_tick = 0
 def build_sensibull_oi_data(atm_strike):
     strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
     
+    # 21 strikes baseline matching Sensibull distribution
     pe_base_vals = [850000, 4500000, 1900000, 7800000, 2800000, 6000000, 2100000, 4400000, 2100000, 14900000, 4500000, 10800000, 4200000, 8300000, 1900000, 5900000, 950000, 3600000, 550000, 5400000, 250000]
-    pe_chg_vals  = [100000, 250000, -80000, 400000, 150000, -200000, 100000, 300000, -50000, 350000, -150000, 280000, -100000, 150000, -80000, 220000, -40000, 180000, -30000, 250000, 10000]
-
     ce_base_vals = [150000, 300000, 180000, 450000, 250000, 900000, 350000, 750000, 480000, 8900000, 2600000, 9900000, 5400000, 12200000, 4400000, 11500000, 3100000, 9300000, 4700000, 14800000, 2500000]
-    ce_chg_vals  = [20000, 40000, 25000, 60000, 35000, 120000, 50000, 95000, 65000, 1800000, 450000, 1200000, 680000, 1600000, 550000, 1400000, 420000, 1100000, -150000, 1900000, 320000]
 
-    return strikes, pe_base_vals, pe_chg_vals, ce_base_vals, ce_chg_vals
+    return strikes, pe_base_vals, ce_base_vals
 
 # -------------------------------------------------------------
 # 7. STREAMING LOOP
@@ -499,104 +497,51 @@ while True:
         """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 9. SENSIBULL OPEN INTEREST GRAPH (CLEAN PLOTLY FIGURE)
+    # 9. SENSIBULL OPEN INTEREST GRAPH
     # ---------------------------------------------------------
-    strikes, pe_base_vals, pe_chg_vals, ce_base_vals, ce_chg_vals = build_sensibull_oi_data(atm_strike)
+    strikes, pe_base_vals, ce_base_vals = build_sensibull_oi_data(atm_strike)
     strike_labels = [str(s) for s in strikes]
     
-    total_pe_oi = sum(pe_base_vals) + sum(pe_chg_vals)
-    total_ce_oi = sum(ce_base_vals) + sum(ce_chg_vals)
+    total_pe_oi = sum(pe_base_vals)
+    total_ce_oi = sum(ce_base_vals)
     net_pcr = float(np.round(total_pe_oi / max(1, total_ce_oi), 2))
-    net_ce_chg_str = f"+26.05L"
-    net_pe_chg_str = f"-7.41L"
 
     oi_summary_box.markdown(f"""
     <div class="oi-summary-card">
         <div class="oi-item">INDIAVIX: <span style="color:#00ff7f;">11.51 (+0.12)</span></div>
         <div class="oi-item">PCR: <span class="pcr-badge">{net_pcr:.2f}</span></div>
-        <div class="oi-item">Call OI change: <span class="oi-call-val">{net_ce_chg_str}</span></div>
-        <div class="oi-item">Put OI change: <span class="oi-put-val">{net_pe_chg_str}</span></div>
+        <div class="oi-item">Call OI change: <span class="oi-call-val">+26.05L</span></div>
+        <div class="oi-item">Put OI change: <span class="oi-put-val">-7.41L</span></div>
         <div class="oi-item">NIFTY Spot: <b>{nifty_spot:.2f}</b></div>
     </div>
     """, unsafe_allow_html=True)
 
+    # Render Open Interest & Scalp Chart on stable intervals
     if loop_tick % 3 == 0 or loop_tick == 1 or not market_active:
         fig_oi = go.Figure()
 
-        # Put Base Bar
+        # Solid Put OI Bars (Green)
         fig_oi.add_trace(go.Bar(
             name="Put OI",
             x=strike_labels,
             y=pe_base_vals,
-            marker_color="#22c55e",
-            offsetgroup=0
+            marker_color="#22c55e"
         ))
 
-        # Put Increase (Cross-hatched)
-        pe_inc = [max(0, pe_chg_vals[i]) for i in range(len(strikes))]
-        fig_oi.add_trace(go.Bar(
-            name="Put Increase (Buildup)",
-            x=strike_labels,
-            y=pe_inc,
-            base=pe_base_vals,
-            marker_color="#22c55e",
-            marker_pattern_shape="/",
-            offsetgroup=0
-        ))
-
-        # Put Decrease (Hollow border)
-        pe_dec = [abs(min(0, pe_chg_vals[i])) for i in range(len(strikes))]
-        fig_oi.add_trace(go.Bar(
-            name="Put Decrease (Unwinding)",
-            x=strike_labels,
-            y=pe_dec,
-            base=[pe_base_vals[i] - pe_dec[i] for i in range(len(strikes))],
-            marker_color="rgba(0,0,0,0)",
-            marker_line_color="#22c55e",
-            marker_line_width=1.5,
-            offsetgroup=0
-        ))
-
-        # Call Base Bar
+        # Solid Call OI Bars (Red)
         fig_oi.add_trace(go.Bar(
             name="Call OI",
             x=strike_labels,
             y=ce_base_vals,
-            marker_color="#ef4444",
-            offsetgroup=1
-        ))
-
-        # Call Increase (Cross-hatched)
-        ce_inc = [max(0, ce_chg_vals[i]) for i in range(len(strikes))]
-        fig_oi.add_trace(go.Bar(
-            name="Call Increase (Buildup)",
-            x=strike_labels,
-            y=ce_inc,
-            base=ce_base_vals,
-            marker_color="#ef4444",
-            marker_pattern_shape="/",
-            offsetgroup=1
-        ))
-
-        # Call Decrease (Hollow border)
-        ce_dec = [abs(min(0, ce_chg_vals[i])) for i in range(len(strikes))]
-        fig_oi.add_trace(go.Bar(
-            name="Call Decrease (Unwinding)",
-            x=strike_labels,
-            y=ce_dec,
-            base=[ce_base_vals[i] - ce_dec[i] for i in range(len(strikes))],
-            marker_color="rgba(0,0,0,0)",
-            marker_line_color="#ef4444",
-            marker_line_width=1.5,
-            offsetgroup=1
+            marker_color="#ef4444"
         ))
 
         atm_str_label = str(atm_strike)
 
-        # Standard layout configuration
+        # Standard layout configuration with clean shapes
         fig_oi.update_layout(
-            title="📊 Open Interest & OI Change (10 Strikes Left & Right)",
-            height=480,
+            title="📊 Open Interest & OI Distribution (10 Strikes Left & Right)",
+            height=460,
             template="plotly_dark",
             uirevision="constant_oi",
             barmode="group",
@@ -641,9 +586,9 @@ while True:
         )
 
         try:
-            oi_chart_box.plotly_chart(fig_oi, width="stretch", config={"displayModeBar": False})
+            oi_chart_box.plotly_chart(fig_oi, width="stretch", key=f"oi_chart_{loop_tick}", config={"displayModeBar": False})
         except Exception:
-            oi_chart_box.plotly_chart(fig_oi, use_container_width=True, config={"displayModeBar": False})
+            oi_chart_box.plotly_chart(fig_oi, use_container_width=True, key=f"oi_chart_{loop_tick}", config={"displayModeBar": False})
 
         # -----------------------------------------------------
         # 10. MULTI-PANE SCALPING CHART
@@ -693,9 +638,9 @@ while True:
         )
 
         try:
-            chart_box.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            chart_box.plotly_chart(fig, width="stretch", key=f"scalp_chart_{loop_tick}", config={"displayModeBar": False})
         except Exception:
-            chart_box.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            chart_box.plotly_chart(fig, use_container_width=True, key=f"scalp_chart_{loop_tick}", config={"displayModeBar": False})
 
     # ---------------------------------------------------------
     # 11. POWER MATRIX TABLE
