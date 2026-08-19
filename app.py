@@ -257,7 +257,8 @@ if "last_minute_recorded" not in st.session_state:
 
 # Global fallback defaults
 sentiment_tag = "🔴 Put Buyers Strong"
-multi_trend, multi_class = "BEARISH", "status-bearish"
+multi_trend = "BEARISH"
+multi_class = "status-bearish"
 unwinding_status = "⚠️ Call Short-Covering Unwinding"
 
 # Initialize Scalp Timeseries
@@ -361,15 +362,18 @@ while True:
     # Power Sentiment Check
     if cur_put_power > 1000000 and cur_call_power < 0:
         sentiment_tag = "🔴 Put Buyers Strong"
-        multi_trend, multi_class = "BEARISH", "status-bearish"
+        multi_trend = "BEARISH"
+        multi_class = "status-bearish"
         unwinding_status = "⚠️ Call Short-Covering Unwinding"
     elif cur_call_power > 1000000 and cur_put_power < 0:
         sentiment_tag = "🟢 Call Buyers Strong"
-        multi_trend, multi_class = "BULLISH", "status-bullish"
+        multi_trend = "BULLISH"
+        multi_class = "status-bullish"
         unwinding_status = "⚠️ Put Unwinding"
     else:
         sentiment_tag = "🟡 Imbalance Neutral"
-        multi_trend, multi_class = "MIXED", "status-wait"
+        multi_trend = "MIXED"
+        multi_class = "status-wait"
         unwinding_status = "Neutral OI Distribution"
 
     # Quant Calculations
