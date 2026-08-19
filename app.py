@@ -167,9 +167,8 @@ def play_audio_alert(alert_type):
         st.components.v1.html(js_code, height=0, width=0)
 
 # -------------------------------------------------------------
-# 4. ROBUST ANGEL ONE SMARTAPI SESSION ENGINE
+# 4. DIRECT ANGEL ONE SESSION INITIALIZER
 # -------------------------------------------------------------
-@st.cache_resource(ttl=3600*2)
 def init_angel_session():
     try:
         try:
@@ -185,7 +184,6 @@ def init_angel_session():
         if not all([api_key, client_code, pin, totp_key]):
             return None
 
-        # Positional syntax ensures compatibility with all versions of SmartAPI
         smart_api = SmartConnect(api_key)
         totp_val = pyotp.TOTP(totp_key).now()
         data = smart_api.generateSession(client_code, pin, totp_val)
@@ -196,7 +194,10 @@ def init_angel_session():
     except Exception:
         return None
 
-smart_api = init_angel_session()
+if "smart_api_client" not in st.session_state or st.session_state.smart_api_client is None:
+    st.session_state.smart_api_client = init_angel_session()
+
+smart_api = st.session_state.smart_api_client
 
 @st.cache_resource(ttl=3600*12)
 def load_nfo_scrip_master():
