@@ -5,7 +5,6 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone, time as dtime
 import pyotp
-import requests
 import time
 
 # -------------------------------------------------------------
@@ -274,13 +273,8 @@ loop_tick = 0
 # 6. SENSIBULL 20-STRIKE OPEN INTEREST GENERATOR
 # -------------------------------------------------------------
 def build_sensibull_oi_data(atm_strike):
-    """
-    Builds 21 strikes (10 OTM PE to 10 OTM CE) with exact Sensibull visual distributions.
-    """
-    strikes = [atm_strike + (i * 50) for i in range(-10, 11)]
+    strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
     
-    # Sensibull distribution baseline
-    # Put OI heavy below ATM; Call OI heavy above ATM
     pe_yesterday = []
     pe_change = []
     ce_yesterday = []
@@ -288,11 +282,9 @@ def build_sensibull_oi_data(atm_strike):
     
     for s in strikes:
         diff = s - atm_strike
-        
-        # Put Distribution (peaks around ATM to -200 pts)
         if diff < 0:
             pe_base = max(1500000, int(15000000 * np.exp(-((diff + 100) ** 2) / (2 * (150 ** 2)))))
-            pe_chg = int(pe_base * np.random.uniform(-0.18, 0.08))  # Unwinding or minor addition
+            pe_chg = int(pe_base * np.random.uniform(-0.18, 0.08))
         elif diff == 0:
             pe_base = 15200000
             pe_chg = 350000
@@ -300,10 +292,9 @@ def build_sensibull_oi_data(atm_strike):
             pe_base = max(250000, int(4500000 * np.exp(-(diff ** 2) / (2 * (120 ** 2)))))
             pe_chg = int(pe_base * np.random.uniform(-0.10, 0.05))
 
-        # Call Distribution (peaks around ATM to +300 pts)
         if diff > 0:
             ce_base = max(2000000, int(14500000 * np.exp(-((diff - 150) ** 2) / (2 * (160 ** 2)))))
-            ce_chg = int(ce_base * np.random.uniform(0.05, 0.22))   # Heavy buildup
+            ce_chg = int(ce_base * np.random.uniform(0.05, 0.22))
         elif diff == 0:
             ce_base = 9200000
             ce_chg = 1800000
@@ -521,7 +512,7 @@ while True:
         """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 9. SENSIBULL OPEN INTEREST & OI CHANGE BAR GRAPH
+    # 9. SENSIBULL OPEN INTEREST & OI CHANGE (ERROR-FREE NUMERIC X-AXIS)
     # ---------------------------------------------------------
     strikes, pe_yest, pe_chg, ce_yest, ce_chg = build_sensibull_oi_data(atm_strike)
     
@@ -531,7 +522,6 @@ while True:
     net_ce_chg_str = f"{sum(ce_chg)/100000:+.2f}L"
     net_pe_chg_str = f"{sum(pe_chg)/100000:+.2f}L"
 
-    # Sensibull Header Summary
     oi_summary_box.markdown(f"""
     <div class="oi-summary-card">
         <div class="oi-item">INDIAVIX: <span style="color:#00ff7f;">11.51 (+0.12)</span></div>
@@ -542,25 +532,20 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # Build Sensibull Paired Bar Graph with Cross-lines & Hollow Unwinding Boxes
-    strike_str = [str(s) for s in strikes]
-    
     fig_oi = go.Figure()
 
-    # --- 1. PUT OI (GREEN GROUP) ---
-    # Solid Base
+    # PUT OI (GREEN)
     pe_solid = [min(pe_yest[i], pe_yest[i] + pe_chg[i]) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strike_str, y=pe_solid,
+        x=strikes, y=pe_solid,
         name="Put OI",
         marker_color="#22c55e",
         offsetgroup=0
     ))
     
-    # Increase (Crossed lines on top)
     pe_inc = [max(0, pe_chg[i]) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strike_str, y=pe_inc,
+        x=strikes, y=pe_inc,
         base=pe_solid,
         name="Put Increase (Buildup)",
         marker_color="#22c55e",
@@ -568,10 +553,9 @@ while True:
         offsetgroup=0
     ))
     
-    # Decrease (Hollow border at top representing unwound OI)
     pe_dec = [abs(min(0, pe_chg[i])) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strike_str, y=pe_dec,
+        x=strikes, y=pe_dec,
         base=pe_solid,
         name="Put Decrease (Unwinding)",
         marker_color="rgba(0,0,0,0)",
@@ -580,20 +564,18 @@ while True:
         offsetgroup=0
     ))
 
-    # --- 2. CALL OI (RED GROUP) ---
-    # Solid Base
+    # CALL OI (RED)
     ce_solid = [min(ce_yest[i], ce_yest[i] + ce_chg[i]) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strike_str, y=ce_solid,
+        x=strikes, y=ce_solid,
         name="Call OI",
         marker_color="#ef4444",
         offsetgroup=1
     ))
     
-    # Increase (Crossed lines on top)
     ce_inc = [max(0, ce_chg[i]) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strike_str, y=ce_inc,
+        x=strikes, y=ce_inc,
         base=ce_solid,
         name="Call Increase (Buildup)",
         marker_color="#ef4444",
@@ -601,10 +583,9 @@ while True:
         offsetgroup=1
     ))
     
-    # Decrease (Hollow border at top)
     ce_dec = [abs(min(0, ce_chg[i])) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strike_str, y=ce_dec,
+        x=strikes, y=ce_dec,
         base=ce_solid,
         name="Call Decrease (Unwinding)",
         marker_color="rgba(0,0,0,0)",
@@ -613,10 +594,9 @@ while True:
         offsetgroup=1
     ))
 
-    # Vertical line at NIFTY Spot Strike
-    atm_idx = len(strikes) // 2
+    # Dotted line at NIFTY Spot Strike (Using numeric coordinates)
     fig_oi.add_vline(
-        x=str(atm_strike),
+        x=atm_strike,
         line_dash="dash",
         line_color="#94a3b8",
         line_width=1.5,
@@ -624,7 +604,6 @@ while True:
         annotation_position="top"
     )
 
-    # Format Sensibull Axis & Legend
     fig_oi.update_layout(
         title="📊 Open Interest & OI Change (10 Strikes Left & Right)",
         height=480,
@@ -642,6 +621,8 @@ while True:
         ),
         xaxis=dict(
             title="Strike Prices",
+            tickmode="array",
+            tickvals=strikes,
             tickangle=-45,
             gridcolor="#1f2937"
         )
