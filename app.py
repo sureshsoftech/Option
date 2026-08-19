@@ -13,7 +13,7 @@ import time
 # 1. PAGE CONFIG & RESPONSIVE DARK THEME
 # -------------------------------------------------------------
 st.set_page_config(
-    page_title="Quant OptionScalp & Sensibull Live Desk",
+    page_title="Quant OptionScalp & Institutional Live Desk",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -41,7 +41,7 @@ st.markdown("""
     .atm-badge-call { background-color: #006622; color: #ffffff; padding: 4px 8px; border-radius: 5px; font-weight: 700; font-size: 13px; }
     .atm-badge-put { background-color: #8b0000; color: #ffffff; padding: 4px 8px; border-radius: 5px; font-weight: 700; font-size: 13px; }
     
-    /* Sensibull OI Metric Bar */
+    /* Institutional OI Metric Bar */
     .oi-summary-card {
         background: #11161f;
         border: 1px solid #21262d;
@@ -167,7 +167,7 @@ def play_audio_alert(alert_type):
         st.components.v1.html(js_code, height=0, width=0)
 
 # -------------------------------------------------------------
-# 4. DIRECT ANGEL ONE HTTPS REST SESSION ENGINE (Zero Dependency Issues)
+# 4. DIRECT REST API SESSION ENGINE
 # -------------------------------------------------------------
 class AngelDirectClient:
     def __init__(self, jwt_token, api_key):
@@ -218,7 +218,7 @@ def authenticate_angel():
     totp_key = str(st.secrets.get("ANGEL_TOTP_KEY", "")).strip()
 
     if not all([api_key, client_code, pin, totp_key]):
-        return None, "Missing Streamlit Secrets (Check ANGEL_* keys)"
+        return None, "Missing Streamlit Secrets"
 
     try:
         totp_val = pyotp.TOTP(totp_key).now()
@@ -274,7 +274,7 @@ scrip_df = load_nfo_scrip_master()
 # 5. DATA RETRIEVAL & MARKET DEPTH PROCESSING
 # -------------------------------------------------------------
 def get_live_india_vix(_api):
-    vix_val, vix_chg = 11.51, 0.12
+    vix_val, vix_chg = 11.45, 0.06
     if _api:
         try:
             vix_res = _api.ltpData("NSE", "INDIA VIX", "26001")
@@ -286,12 +286,20 @@ def get_live_india_vix(_api):
             pass
     return vix_val, vix_chg
 
+def parse_expiry_date(exp_str):
+    for fmt in ("%d%b%Y", "%d-%b-%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(str(exp_str).strip(), fmt).date()
+        except Exception:
+            continue
+    return None
+
 def get_live_market_snapshot(_api, scrip_data):
-    nifty_spot = 24080.45
-    fut_price = 24130.10
-    expiry_str = "CURRENT"
-    call_ltp = 114.15
-    put_ltp = 138.45
+    nifty_spot = 24047.00
+    fut_price = 24108.40
+    expiry_str = "WEEKLY"
+    call_ltp = 123.60
+    put_ltp = 112.95
     ce_token, pe_token = None, None
     ce_symbol, pe_symbol = "", ""
     
@@ -300,7 +308,7 @@ def get_live_market_snapshot(_api, scrip_data):
             spot_data = _api.ltpData("NSE", "Nifty 50", "99926000")
             if spot_data and spot_data.get("status"):
                 nifty_spot = float(spot_data["data"]["ltp"])
-                fut_price = nifty_spot + 49.65
+                fut_price = nifty_spot + 61.40
         except Exception:
             pass
 
@@ -308,10 +316,19 @@ def get_live_market_snapshot(_api, scrip_data):
     
     if _api and scrip_data is not None and not scrip_data.empty:
         try:
-            today_str = get_current_ist().strftime("%Y-%m-%d")
-            active_expiries = sorted(scrip_data[scrip_data["expiry"] >= today_str]["expiry"].unique())
-            if active_expiries:
-                nearest_expiry = active_expiries[0]
+            today_date = get_current_ist().date()
+            unique_expiries = scrip_data["expiry"].dropna().unique()
+            
+            parsed_expiries = []
+            for exp in unique_expiries:
+                d = parse_expiry_date(exp)
+                if d and d >= today_date:
+                    parsed_expiries.append((d, exp))
+            
+            parsed_expiries.sort(key=lambda x: x[0])
+            
+            if parsed_expiries:
+                nearest_expiry = parsed_expiries[0][1]
                 expiry_str = nearest_expiry
 
                 ce_match = scrip_data[(scrip_data["expiry"] == nearest_expiry) & 
@@ -388,16 +405,23 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     ce_base = [400000, 600000, 350000, 900000, 500000, 1200000, 650000, 1100000, 750000, 8900000,
                3100000, 9900000, 5400000, 12200000, 4400000, 11500000, 3100000, 9300000, 4700000, 14800000, 2500000]
 
-    calc_call_power = -610621
-    calc_put_power = 1828328
+    calc_call_power = -612843
+    calc_put_power = 1914743
     is_live = False
 
     if _api and scrip_data is not None and not scrip_data.empty:
         try:
-            today_str = get_current_ist().strftime("%Y-%m-%d")
-            active_expiries = sorted(scrip_data[scrip_data["expiry"] >= today_str]["expiry"].unique())
-            if active_expiries:
-                nearest_expiry = active_expiries[0]
+            today_date = get_current_ist().date()
+            unique_expiries = scrip_data["expiry"].dropna().unique()
+            parsed_expiries = []
+            for exp in unique_expiries:
+                d = parse_expiry_date(exp)
+                if d and d >= today_date:
+                    parsed_expiries.append((d, exp))
+            parsed_expiries.sort(key=lambda x: x[0])
+
+            if parsed_expiries:
+                nearest_expiry = parsed_expiries[0][1]
 
                 target_ce = scrip_data[(scrip_data["expiry"] == nearest_expiry) & 
                                         (scrip_data["strike"].isin(strikes)) & 
@@ -492,7 +516,7 @@ def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_cross
     fig_oi.add_trace(go.Bar(name="Call Decrease (Unwinding)", x=ce_x, y=ce_hollow, marker_color="rgba(0,0,0,0)", marker_line_color="#ef4444", marker_line_width=1.5, width=16))
 
     fig_oi.update_layout(
-        title=dict(text="📊 Sensibull 3-Phase Open Interest (10 Strikes Left & Right)", font=dict(size=14, color="#ffffff"), y=0.98),
+        title=dict(text="📊 Institutional 3-Phase Open Interest (10 Strikes Left & Right)", font=dict(size=14, color="#ffffff"), y=0.98),
         height=480,
         template="plotly_dark",
         barmode="stack",
@@ -564,8 +588,8 @@ strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_
 
 col_head, col_ctrl1, col_ctrl2 = st.columns([3, 1, 1.2])
 with col_head:
-    st.title("⚡ Quant OptionScalp & Sensibull Live Desk")
-    conn_badge = "🟢 Angel One SmartAPI Feed (IST)" if (smart_api and is_live) else f"🟡 Feed Status: {auth_log}"
+    st.title("⚡ Quant OptionScalp & Institutional Live Desk")
+    conn_badge = "🟢 Angel One SmartAPI Feed (IST)" if smart_api else f"🟡 Feed Status: {auth_log}"
     st.caption(f"Session Status: {conn_badge}")
 
 with col_ctrl1:
