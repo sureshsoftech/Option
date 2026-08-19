@@ -255,7 +255,6 @@ if "matrix_history" not in st.session_state:
 if "last_minute_recorded" not in st.session_state:
     st.session_state.last_minute_recorded = get_current_ist().minute
 
-# Global fallback defaults
 sentiment_tag = "🔴 Put Buyers Strong"
 multi_trend = "BEARISH"
 multi_class = "status-bearish"
@@ -276,38 +275,33 @@ cur_put_power = 1616893
 loop_tick = 0
 
 # -------------------------------------------------------------
-# 6. SENSIBULL 3-PHASE OPEN INTEREST MODEL (Yesterday -> Low -> Current)
+# 6. SENSIBULL 3-PHASE OPEN INTEREST MODEL (21 Full Strikes)
 # -------------------------------------------------------------
 def build_sensibull_3phase_data(atm_strike):
-    """
-    Computes:
-    - yesterday_oi (100)
-    - day_low_oi (80)
-    - current_oi (90)
-    Generates:
-    - Solid Base = day_low_oi (80)
-    - Crossed Pattern = max(0, current_oi - day_low_oi) (10)
-    - Hollow Unwound Top = max(0, yesterday_oi - max(current_oi, day_low_oi)) (10)
-    """
     strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
     
-    # 21 Strikes Base Values
-    pe_yest = [850000, 4500000, 1900000, 7800000, 2800000, 6000000, 2100000, 4400000, 2100000, 14900000, 4500000, 10800000, 4200000, 8300000, 1900000, 5900000, 950000, 3600000, 550000, 5400000, 250000]
-    ce_yest = [150000, 300000, 180000, 450000, 250000, 900000, 350000, 750000, 480000, 8900000, 2600000, 9900000, 5400000, 12200000, 4400000, 11500000, 3100000, 9300000, 4700000, 14800000, 2500000]
+    # 21 Strikes Base Values (Ensures all 10 left & 10 right strikes have clear visible bars)
+    pe_yest = [
+        1800000, 4500000, 2200000, 7800000, 3100000, 6000000, 2400000, 4400000, 2300000, 14900000,
+        4800000, 10800000, 4200000, 8300000, 1900000, 5900000, 1200000, 3600000, 800000, 5400000, 600000
+    ]
+    ce_yest = [
+        400000, 600000, 350000, 900000, 500000, 1200000, 650000, 1100000, 750000, 8900000,
+        3100000, 9900000, 5400000, 12200000, 4400000, 11500000, 3100000, 9300000, 4700000, 14800000, 2500000
+    ]
 
     pe_solid, pe_crossed, pe_hollow = [], [], []
     ce_solid, ce_crossed, ce_hollow = [], [], []
 
     for i, s in enumerate(strikes):
-        # PE Side
+        # PE Side (Yesterday -> Low -> Current)
         y_pe = pe_yest[i]
-        # Simulate decrease down to 80% and recovery to 90% or buildup to 115%
         if s <= atm_strike:
             low_pe = int(y_pe * 0.85)
-            cur_pe = int(y_pe * 0.93)
+            cur_pe = int(y_pe * 0.94)
         else:
             low_pe = y_pe
-            cur_pe = int(y_pe * 1.05)
+            cur_pe = int(y_pe * 1.08)
 
         base_p = min(y_pe, low_pe, cur_pe)
         cross_p = max(0, cur_pe - base_p)
@@ -317,14 +311,14 @@ def build_sensibull_3phase_data(atm_strike):
         pe_crossed.append(cross_p)
         pe_hollow.append(hollow_p)
 
-        # CE Side
+        # CE Side (Yesterday -> Low -> Current)
         y_ce = ce_yest[i]
         if s >= atm_strike:
             low_ce = y_ce
-            cur_ce = int(y_ce * 1.18)  # Buildup above yesterday
+            cur_ce = int(y_ce * 1.18)
         else:
             low_ce = int(y_ce * 0.80)
-            cur_ce = int(y_ce * 0.90)  # Recovery after unwinding
+            cur_ce = int(y_ce * 0.92)
 
         base_c = min(y_ce, low_ce, cur_ce)
         cross_c = max(0, cur_ce - base_c)
@@ -564,71 +558,58 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # Separate X positions for side-by-side grouped stacks
+    # Side-by-side grouped positions
     pe_x = [s - 9 for s in strikes]
     ce_x = [s + 9 for s in strikes]
 
     fig_oi = go.Figure()
 
     # --- 1. PUT SIDE (GREEN STACK) ---
-    # Layer 1: Solid Base (Lowest Retained Level)
     fig_oi.add_trace(go.Bar(
         name="Put Base OI",
         x=pe_x, y=pe_solid,
         marker_color="#22c55e",
-        width=16,
-        showlegend=True
+        width=16
     ))
-    # Layer 2: Crossed Hatched (Increase / Recovery from Low)
     fig_oi.add_trace(go.Bar(
         name="Put Increase (Buildup)",
         x=pe_x, y=pe_crossed,
         marker_color="#22c55e",
         marker_pattern_shape="/",
-        width=16,
-        showlegend=True
+        width=16
     ))
-    # Layer 3: Hollow Box (Unwound Decreased Area up to Yesterday Peak)
     fig_oi.add_trace(go.Bar(
         name="Put Decrease (Unwinding)",
         x=pe_x, y=pe_hollow,
         marker_color="rgba(0,0,0,0)",
         marker_line_color="#22c55e",
         marker_line_width=1.5,
-        width=16,
-        showlegend=True
+        width=16
     ))
 
     # --- 2. CALL SIDE (RED STACK) ---
-    # Layer 1: Solid Base
     fig_oi.add_trace(go.Bar(
         name="Call Base OI",
         x=ce_x, y=ce_solid,
         marker_color="#ef4444",
-        width=16,
-        showlegend=True
+        width=16
     ))
-    # Layer 2: Crossed Hatched (Increase / Recovery)
     fig_oi.add_trace(go.Bar(
         name="Call Increase (Buildup)",
         x=ce_x, y=ce_crossed,
         marker_color="#ef4444",
         marker_pattern_shape="/",
-        width=16,
-        showlegend=True
+        width=16
     ))
-    # Layer 3: Hollow Box (Unwound Decreased Area up to Yesterday Peak)
     fig_oi.add_trace(go.Bar(
         name="Call Decrease (Unwinding)",
         x=ce_x, y=ce_hollow,
         marker_color="rgba(0,0,0,0)",
         marker_line_color="#ef4444",
         marker_line_width=1.5,
-        width=16,
-        showlegend=True
+        width=16
     ))
 
-    # Clean Chart Layout
     fig_oi.update_layout(
         title="📊 Open Interest & 3-Phase OI Change (10 Strikes Left & Right)",
         height=480,
@@ -675,11 +656,10 @@ while True:
         ]
     )
 
-    with oi_chart_box:
-        st.plotly_chart(fig_oi, use_container_width=True, config={"displayModeBar": False})
+    oi_chart_box.plotly_chart(fig_oi, use_container_width=True, config={"displayModeBar": False})
 
     # ---------------------------------------------------------
-    # 10. MULTI-PANE SCALPING CHART
+    # 10. MULTI-PANE SCALPING CHART (Direct Y-Range Framing)
     # ---------------------------------------------------------
     times_str = [t.strftime("%I:%M %p") for t in times_dt]
 
@@ -691,7 +671,7 @@ while True:
         subplot_titles=(f"Dual Option vs POC (ATM {atm_strike})", "Combined Straddle vs VWAP & TLOC", "SMI Force & CVD Divergence")
     )
     
-    # Pane 1
+    # Pane 1: Option CMP vs POC
     fig_scalp.add_trace(go.Scatter(x=times_str, y=put_prices, name="PUT CMP", line=dict(color="#ff4d4d", width=2)), row=1, col=1)
     fig_scalp.add_trace(go.Scatter(x=times_str, y=call_prices, name="CALL CMP", line=dict(color="#00ff7f", width=2)), row=1, col=1)
     fig_scalp.add_hline(y=put_poc, line_dash="dash", line_color="#ff9999", annotation_text=f"PUT POC ({put_poc})", row=1, col=1)
@@ -699,15 +679,18 @@ while True:
     fig_scalp.add_trace(go.Scatter(x=times_str, y=ts_dots_put, mode="markers", marker=dict(color="#00ff00", size=8, symbol="circle"), name="TS PE Trigger"), row=1, col=1)
     fig_scalp.add_trace(go.Scatter(x=times_str, y=ts_dots_call, mode="markers", marker=dict(color="#00ff7f", size=8, symbol="diamond"), name="TS CE Trigger"), row=1, col=1)
 
-    # Pane 2
+    # Pane 2: Straddle vs VWAP & TLOC
     fig_scalp.add_trace(go.Scatter(x=times_str, y=straddle_arr, name="Straddle (CE+PE)", line=dict(color="#ffa500", width=1.5)), row=2, col=1)
     fig_scalp.add_trace(go.Scatter(x=times_str, y=straddle_vwap_arr, name="Straddle VWAP", line=dict(color="#ffff00", dash="dot", width=1.5)), row=2, col=1)
     fig_scalp.add_hline(y=straddle_tloc, line_dash="dash", line_color="#ff4444", annotation_text=f"TLOC ({straddle_tloc})", row=2, col=1)
 
-    # Pane 3
+    # Pane 3: SMI & CVD
     bar_colors = np.where(delta_force >= 0, "#00ff7f", "#ff4d4d")
     fig_scalp.add_trace(go.Bar(x=times_str, y=delta_force, marker_color=bar_colors, name="SMI Delta"), row=3, col=1)
     fig_scalp.add_trace(go.Scatter(x=times_str, y=cvd_line / 10, name="CVD Divergence", line=dict(color="#00e5ff", width=1.5)), row=3, col=1)
+
+    min_p1 = min(min(put_prices), min(call_prices), call_poc, put_poc) - 5
+    max_p1 = max(max(put_prices), max(call_prices), call_poc, put_poc) + 5
 
     fig_scalp.update_layout(
         height=640,
@@ -716,6 +699,7 @@ while True:
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     
+    fig_scalp.update_yaxes(range=[min_p1, max_p1], row=1, col=1)
     fig_scalp.update_xaxes(showticklabels=False, row=1, col=1)
     fig_scalp.update_xaxes(showticklabels=False, row=2, col=1)
     fig_scalp.update_xaxes(
@@ -725,8 +709,7 @@ while True:
         row=3, col=1
     )
 
-    with chart_box:
-        st.plotly_chart(fig_scalp, use_container_width=True, config={"displayModeBar": False})
+    chart_box.plotly_chart(fig_scalp, use_container_width=True, config={"displayModeBar": False})
 
     # ---------------------------------------------------------
     # 11. POWER MATRIX TABLE
@@ -747,8 +730,7 @@ while True:
             "Market Sentiment": hist["Sentiment"]
         })
 
-    with table_box:
-        st.table(pd.DataFrame(table_rows))
+    table_box.table(pd.DataFrame(table_rows))
 
     if not market_active:
         st.stop()
