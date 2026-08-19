@@ -280,7 +280,6 @@ loop_tick = 0
 def build_sensibull_3phase_data(atm_strike):
     strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
     
-    # 21 Strikes Base Values (Ensures all 10 left & 10 right strikes have clear visible bars)
     pe_yest = [
         1800000, 4500000, 2200000, 7800000, 3100000, 6000000, 2400000, 4400000, 2300000, 14900000,
         4800000, 10800000, 4200000, 8300000, 1900000, 5900000, 1200000, 3600000, 800000, 5400000, 600000
@@ -294,7 +293,6 @@ def build_sensibull_3phase_data(atm_strike):
     ce_solid, ce_crossed, ce_hollow = [], [], []
 
     for i, s in enumerate(strikes):
-        # PE Side (Yesterday -> Low -> Current)
         y_pe = pe_yest[i]
         if s <= atm_strike:
             low_pe = int(y_pe * 0.85)
@@ -311,7 +309,6 @@ def build_sensibull_3phase_data(atm_strike):
         pe_crossed.append(cross_p)
         pe_hollow.append(hollow_p)
 
-        # CE Side (Yesterday -> Low -> Current)
         y_ce = ce_yest[i]
         if s >= atm_strike:
             low_ce = y_ce
@@ -334,13 +331,13 @@ def build_sensibull_3phase_data(atm_strike):
 # 7. STREAMING LOOP
 # -------------------------------------------------------------
 while True:
+    loop_tick += 1
     current_time_ist = get_current_ist()
     market_active, market_msg = is_market_open()
 
     nifty_spot, fut_price, atm_strike, expiry_str, base_c, base_p = get_live_market_snapshot(smart_api)
 
     if market_active:
-        loop_tick += 1
         new_put = float(np.round(max(10.0, put_prices[-1] + (np.random.randn() * 0.60)), 2))
         new_call = float(np.round(max(10.0, call_prices[-1] - (np.random.randn() * 0.55)), 2))
         
@@ -558,7 +555,6 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # Side-by-side grouped positions
     pe_x = [s - 9 for s in strikes]
     ce_x = [s + 9 for s in strikes]
 
@@ -611,12 +607,23 @@ while True:
     ))
 
     fig_oi.update_layout(
-        title="📊 Open Interest & 3-Phase OI Change (10 Strikes Left & Right)",
+        title=dict(
+            text="📊 Open Interest & 3-Phase OI Change (10 Strikes Left & Right)",
+            font=dict(size=14, color="#ffffff"),
+            y=0.98
+        ),
         height=480,
         template="plotly_dark",
         barmode="stack",
-        margin=dict(l=10, r=10, t=40, b=10),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=10, r=10, t=65, b=10),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=10)
+        ),
         yaxis=dict(
             title="Contracts (OI)",
             tickvals=[0, 2000000, 4000000, 6000000, 8000000, 10000000, 12000000, 14000000, 16000000],
@@ -656,10 +663,14 @@ while True:
         ]
     )
 
-    oi_chart_box.plotly_chart(fig_oi, use_container_width=True, config={"displayModeBar": False})
+    oi_chart_box.plotly_chart(
+        fig_oi,
+        key=f"oi_canvas_{loop_tick}",
+        config={"displayModeBar": False}
+    )
 
     # ---------------------------------------------------------
-    # 10. MULTI-PANE SCALPING CHART (Direct Y-Range Framing)
+    # 10. MULTI-PANE SCALPING CHART
     # ---------------------------------------------------------
     times_str = [t.strftime("%I:%M %p") for t in times_dt]
 
@@ -709,7 +720,11 @@ while True:
         row=3, col=1
     )
 
-    chart_box.plotly_chart(fig_scalp, use_container_width=True, config={"displayModeBar": False})
+    chart_box.plotly_chart(
+        fig_scalp,
+        key=f"scalp_canvas_{loop_tick}",
+        config={"displayModeBar": False}
+    )
 
     # ---------------------------------------------------------
     # 11. POWER MATRIX TABLE
