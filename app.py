@@ -167,34 +167,84 @@ def play_audio_alert(alert_type):
         st.components.v1.html(js_code, height=0, width=0)
 
 # -------------------------------------------------------------
-# 4. ROBUST ANGEL ONE SMARTAPI SESSION & DIAGNOSTICS
+# 4. DIRECT ANGEL ONE HTTPS REST SESSION ENGINE (Zero Dependency Issues)
 # -------------------------------------------------------------
-def authenticate_angel():
-    try:
+class AngelDirectClient:
+    def __init__(self, jwt_token, api_key):
+        self.jwt_token = jwt_token
+        self.api_key = api_key
+        self.headers = {
+            "Authorization": f"Bearer {jwt_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-UserType": "USER",
+            "X-SourceID": "WEB",
+            "X-ClientLocalIP": "127.0.0.1",
+            "X-ClientPublicIP": "106.193.147.98",
+            "X-MACAddress": "fe80::216e:6507:4b90:3719",
+            "X-PrivateKey": api_key
+        }
+
+    def ltpData(self, exchange, tradingsymbol, symboltoken):
+        url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/order/v1/getLtpData"
+        payload = {"exchange": exchange, "tradingsymbol": tradingsymbol, "symboltoken": str(symboltoken)}
         try:
-            from SmartApi.smartConnect import SmartConnect
-        except ImportError:
-            from SmartApi import SmartConnect
+            r = requests.post(url, headers=self.headers, json=payload, timeout=5)
+            return r.json()
+        except Exception as e:
+            return {"status": False, "message": str(e)}
 
-        api_key = str(st.secrets.get("ANGEL_API_KEY", "")).strip()
-        client_code = str(st.secrets.get("ANGEL_CLIENT_CODE", "")).strip()
-        pin = str(st.secrets.get("ANGEL_PIN", "")).strip()
-        totp_key = str(st.secrets.get("ANGEL_TOTP_KEY", "")).strip()
+    def getMarketData(self, mode, tokens_dict):
+        url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1/quote/"
+        payload = {"mode": mode, "exchangeTokens": tokens_dict}
+        try:
+            r = requests.post(url, headers=self.headers, json=payload, timeout=7)
+            return r.json()
+        except Exception as e:
+            return {"status": False, "message": str(e)}
 
-        if not all([api_key, client_code, pin, totp_key]):
-            return None, "Missing Streamlit Secrets (Check ANGEL_* keys)"
+    def getCandleData(self, params):
+        url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/historical/v1/getCandleData"
+        try:
+            r = requests.post(url, headers=self.headers, json=params, timeout=5)
+            return r.json()
+        except Exception as e:
+            return {"status": False, "message": str(e)}
 
-        smart_api = SmartConnect(api_key=api_key)
+def authenticate_angel():
+    api_key = str(st.secrets.get("ANGEL_API_KEY", "")).strip()
+    client_code = str(st.secrets.get("ANGEL_CLIENT_CODE", "")).strip()
+    pin = str(st.secrets.get("ANGEL_PIN", "")).strip()
+    totp_key = str(st.secrets.get("ANGEL_TOTP_KEY", "")).strip()
+
+    if not all([api_key, client_code, pin, totp_key]):
+        return None, "Missing Streamlit Secrets (Check ANGEL_* keys)"
+
+    try:
         totp_val = pyotp.TOTP(totp_key).now()
-        data = smart_api.generateSession(client_code, pin, totp_val)
+        login_url = "https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByPassword"
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-UserType": "USER",
+            "X-SourceID": "WEB",
+            "X-ClientLocalIP": "127.0.0.1",
+            "X-ClientPublicIP": "106.193.147.98",
+            "X-MACAddress": "fe80::216e:6507:4b90:3719",
+            "X-PrivateKey": api_key
+        }
+        payload = {"clientcode": client_code, "password": pin, "totp": totp_val}
+        res = requests.post(login_url, headers=headers, json=payload, timeout=8)
+        data = res.json()
 
-        if data and data.get("status"):
-            return smart_api, "Connected (Token Valid)"
+        if data.get("status") and "data" in data and "jwtToken" in data["data"]:
+            client = AngelDirectClient(data["data"]["jwtToken"], api_key)
+            return client, "Connected via Direct REST"
         else:
-            err_msg = data.get("message", "Authentication Failed") if data else "Empty API Response"
-            return None, f"Angel Rejected: {err_msg}"
+            err_msg = data.get("message", "Login Rejected")
+            return None, f"Angel API: {err_msg}"
     except Exception as e:
-        return None, f"Error: {str(e)}"
+        return None, f"REST Error: {str(e)}"
 
 if "smart_api_obj" not in st.session_state or st.session_state.smart_api_obj is None:
     smart_api, auth_log = authenticate_angel()
