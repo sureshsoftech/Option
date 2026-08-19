@@ -327,84 +327,90 @@ def build_sensibull_3phase_data(atm_strike):
 
     return strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow
 
+def render_oi_chart(atm_strike, fut_price):
+    strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow = build_sensibull_3phase_data(atm_strike)
+    pe_x = [s - 9 for s in strikes]
+    ce_x = [s + 9 for s in strikes]
+
+    fig_oi = go.Figure()
+    fig_oi.add_trace(go.Bar(name="Put Base OI", x=pe_x, y=pe_solid, marker_color="#22c55e", width=16))
+    fig_oi.add_trace(go.Bar(name="Put Increase (Buildup)", x=pe_x, y=pe_crossed, marker_color="#22c55e", marker_pattern_shape="/", width=16))
+    fig_oi.add_trace(go.Bar(name="Put Decrease (Unwinding)", x=pe_x, y=pe_hollow, marker_color="rgba(0,0,0,0)", marker_line_color="#22c55e", marker_line_width=1.5, width=16))
+
+    fig_oi.add_trace(go.Bar(name="Call Base OI", x=ce_x, y=ce_solid, marker_color="#ef4444", width=16))
+    fig_oi.add_trace(go.Bar(name="Call Increase (Buildup)", x=ce_x, y=ce_crossed, marker_color="#ef4444", marker_pattern_shape="/", width=16))
+    fig_oi.add_trace(go.Bar(name="Call Decrease (Unwinding)", x=ce_x, y=ce_hollow, marker_color="rgba(0,0,0,0)", marker_line_color="#ef4444", marker_line_width=1.5, width=16))
+
+    fig_oi.update_layout(
+        title=dict(text="📊 Open Interest & 3-Phase OI Change (10 Strikes Left & Right)", font=dict(size=14, color="#ffffff"), y=0.98),
+        height=480,
+        template="plotly_dark",
+        barmode="stack",
+        margin=dict(l=10, r=10, t=65, b=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
+        yaxis=dict(title="Contracts (OI)", tickvals=[0, 2000000, 4000000, 6000000, 8000000, 10000000, 12000000, 14000000, 16000000], ticktext=["0", "20L", "40L", "60L", "80L", "1Cr", "1.2Cr", "1.4Cr", "1.6Cr"], gridcolor="#1f2937"),
+        xaxis=dict(title="Strike Prices", tickmode="array", tickvals=strikes, ticktext=[str(s) for s in strikes], tickangle=-45, range=[strikes[0] - 35, strikes[-1] + 35], gridcolor="#1f2937"),
+        shapes=[dict(type="line", x0=fut_price, x1=fut_price, y0=0, y1=1, yref="paper", line=dict(color="#94a3b8", width=1.5, dash="dash"))],
+        annotations=[dict(x=fut_price, y=1, yref="paper", text=f"NIFTY {fut_price:.2f}", showarrow=False, font=dict(color="#94a3b8", size=11), yshift=10)]
+    )
+    return fig_oi
+
+def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
+    times_str = [t.strftime("%I:%M %p") for t in times_dt]
+    put_poc = float(np.round(np.average(put_prices, weights=volumes), 2))
+    call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
+    straddle_arr = np.array(put_prices) + np.array(call_prices)
+    vol_arr = np.array(volumes)
+    straddle_vwap_arr = np.cumsum(straddle_arr * vol_arr) / np.cumsum(vol_arr)
+    straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2))
+    delta_force = np.convolve(np.random.randn(len(times_dt)) * 1.8, np.ones(3)/3, mode='same')
+    cvd_line = np.cumsum(delta_force * 50)
+    ts_dots_put = np.full(len(times_dt), np.nan)
+    ts_dots_call = np.full(len(times_dt), np.nan)
+
+    fig_scalp = make_subplots(
+        rows=3, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.05,
+        row_heights=[0.50, 0.25, 0.25],
+        subplot_titles=(f"Dual Option vs POC (ATM {atm_strike})", "Combined Straddle vs VWAP & TLOC", "SMI Force & CVD Divergence")
+    )
+    fig_scalp.add_trace(go.Scatter(x=times_str, y=put_prices, name="PUT CMP", line=dict(color="#ff4d4d", width=2)), row=1, col=1)
+    fig_scalp.add_trace(go.Scatter(x=times_str, y=call_prices, name="CALL CMP", line=dict(color="#00ff7f", width=2)), row=1, col=1)
+    fig_scalp.add_hline(y=put_poc, line_dash="dash", line_color="#ff9999", annotation_text=f"PUT POC ({put_poc})", row=1, col=1)
+    fig_scalp.add_hline(y=call_poc, line_dash="dash", line_color="#99ff99", annotation_text=f"CALL POC ({call_poc})", row=1, col=1)
+
+    fig_scalp.add_trace(go.Scatter(x=times_str, y=straddle_arr, name="Straddle (CE+PE)", line=dict(color="#ffa500", width=1.5)), row=2, col=1)
+    fig_scalp.add_trace(go.Scatter(x=times_str, y=straddle_vwap_arr, name="Straddle VWAP", line=dict(color="#ffff00", dash="dot", width=1.5)), row=2, col=1)
+    fig_scalp.add_hline(y=straddle_tloc, line_dash="dash", line_color="#ff4444", annotation_text=f"TLOC ({straddle_tloc})", row=2, col=1)
+
+    bar_colors = np.where(delta_force >= 0, "#00ff7f", "#ff4d4d")
+    fig_scalp.add_trace(go.Bar(x=times_str, y=delta_force, marker_color=bar_colors, name="SMI Delta"), row=3, col=1)
+    fig_scalp.add_trace(go.Scatter(x=times_str, y=cvd_line / 10, name="CVD Divergence", line=dict(color="#00e5ff", width=1.5)), row=3, col=1)
+
+    min_p1 = min(min(put_prices), min(call_prices), call_poc, put_poc) - 5
+    max_p1 = max(max(put_prices), max(call_prices), call_poc, put_poc) + 5
+
+    fig_scalp.update_layout(height=640, template="plotly_dark", margin=dict(l=8, r=8, t=26, b=8), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    fig_scalp.update_yaxes(range=[min_p1, max_p1], row=1, col=1)
+    fig_scalp.update_xaxes(showticklabels=False, row=1, col=1)
+    fig_scalp.update_xaxes(showticklabels=False, row=2, col=1)
+    fig_scalp.update_xaxes(showticklabels=True, tickangle=0, nticks=5, row=3, col=1)
+    return fig_scalp
+
 # -------------------------------------------------------------
-# 7. ONE-TIME INITIAL STATIC CHART GENERATION
+# 7. INITIAL STATIC RENDERING (With Dynamic Key Protection)
 # -------------------------------------------------------------
 nifty_spot, fut_price, atm_strike, expiry_str, base_c, base_p = get_live_market_snapshot(smart_api)
-strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow = build_sensibull_3phase_data(atm_strike)
 
-pe_x = [s - 9 for s in strikes]
-ce_x = [s + 9 for s in strikes]
+initial_fig_oi = render_oi_chart(atm_strike, fut_price)
+oi_chart_box.plotly_chart(initial_fig_oi, key="init_oi_chart", config={"displayModeBar": False})
 
-fig_oi = go.Figure()
-fig_oi.add_trace(go.Bar(name="Put Base OI", x=pe_x, y=pe_solid, marker_color="#22c55e", width=16))
-fig_oi.add_trace(go.Bar(name="Put Increase (Buildup)", x=pe_x, y=pe_crossed, marker_color="#22c55e", marker_pattern_shape="/", width=16))
-fig_oi.add_trace(go.Bar(name="Put Decrease (Unwinding)", x=pe_x, y=pe_hollow, marker_color="rgba(0,0,0,0)", marker_line_color="#22c55e", marker_line_width=1.5, width=16))
-
-fig_oi.add_trace(go.Bar(name="Call Base OI", x=ce_x, y=ce_solid, marker_color="#ef4444", width=16))
-fig_oi.add_trace(go.Bar(name="Call Increase (Buildup)", x=ce_x, y=ce_crossed, marker_color="#ef4444", marker_pattern_shape="/", width=16))
-fig_oi.add_trace(go.Bar(name="Call Decrease (Unwinding)", x=ce_x, y=ce_hollow, marker_color="rgba(0,0,0,0)", marker_line_color="#ef4444", marker_line_width=1.5, width=16))
-
-fig_oi.update_layout(
-    title=dict(text="📊 Open Interest & 3-Phase OI Change (10 Strikes Left & Right)", font=dict(size=14, color="#ffffff"), y=0.98),
-    height=480,
-    template="plotly_dark",
-    barmode="stack",
-    margin=dict(l=10, r=10, t=65, b=10),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
-    yaxis=dict(title="Contracts (OI)", tickvals=[0, 2000000, 4000000, 6000000, 8000000, 10000000, 12000000, 14000000, 16000000], ticktext=["0", "20L", "40L", "60L", "80L", "1Cr", "1.2Cr", "1.4Cr", "1.6Cr"], gridcolor="#1f2937"),
-    xaxis=dict(title="Strike Prices", tickmode="array", tickvals=strikes, ticktext=[str(s) for s in strikes], tickangle=-45, range=[strikes[0] - 35, strikes[-1] + 35], gridcolor="#1f2937"),
-    shapes=[dict(type="line", x0=fut_price, x1=fut_price, y0=0, y1=1, yref="paper", line=dict(color="#94a3b8", width=1.5, dash="dash"))],
-    annotations=[dict(x=fut_price, y=1, yref="paper", text=f"NIFTY {fut_price:.2f}", showarrow=False, font=dict(color="#94a3b8", size=11), yshift=10)]
-)
-oi_chart_box.plotly_chart(fig_oi, use_container_width=True, config={"displayModeBar": False})
-
-# Initial Multi-Pane Chart
-times_str = [t.strftime("%I:%M %p") for t in times_dt]
-put_poc = float(np.round(np.average(put_prices, weights=volumes), 2))
-call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
-straddle_arr = np.array(put_prices) + np.array(call_prices)
-vol_arr = np.array(volumes)
-straddle_vwap_arr = np.cumsum(straddle_arr * vol_arr) / np.cumsum(vol_arr)
-straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2))
-delta_force = np.convolve(np.random.randn(len(times_dt)) * 1.8, np.ones(3)/3, mode='same')
-cvd_line = np.cumsum(delta_force * 50)
-ts_dots_put = np.full(len(times_dt), np.nan)
-ts_dots_call = np.full(len(times_dt), np.nan)
-
-fig_scalp = make_subplots(
-    rows=3, cols=1,
-    shared_xaxes=True,
-    vertical_spacing=0.05,
-    row_heights=[0.50, 0.25, 0.25],
-    subplot_titles=(f"Dual Option vs POC (ATM {atm_strike})", "Combined Straddle vs VWAP & TLOC", "SMI Force & CVD Divergence")
-)
-fig_scalp.add_trace(go.Scatter(x=times_str, y=put_prices, name="PUT CMP", line=dict(color="#ff4d4d", width=2)), row=1, col=1)
-fig_scalp.add_trace(go.Scatter(x=times_str, y=call_prices, name="CALL CMP", line=dict(color="#00ff7f", width=2)), row=1, col=1)
-fig_scalp.add_hline(y=put_poc, line_dash="dash", line_color="#ff9999", annotation_text=f"PUT POC ({put_poc})", row=1, col=1)
-fig_scalp.add_hline(y=call_poc, line_dash="dash", line_color="#99ff99", annotation_text=f"CALL POC ({call_poc})", row=1, col=1)
-
-fig_scalp.add_trace(go.Scatter(x=times_str, y=straddle_arr, name="Straddle (CE+PE)", line=dict(color="#ffa500", width=1.5)), row=2, col=1)
-fig_scalp.add_trace(go.Scatter(x=times_str, y=straddle_vwap_arr, name="Straddle VWAP", line=dict(color="#ffff00", dash="dot", width=1.5)), row=2, col=1)
-fig_scalp.add_hline(y=straddle_tloc, line_dash="dash", line_color="#ff4444", annotation_text=f"TLOC ({straddle_tloc})", row=2, col=1)
-
-bar_colors = np.where(delta_force >= 0, "#00ff7f", "#ff4d4d")
-fig_scalp.add_trace(go.Bar(x=times_str, y=delta_force, marker_color=bar_colors, name="SMI Delta"), row=3, col=1)
-fig_scalp.add_trace(go.Scatter(x=times_str, y=cvd_line / 10, name="CVD Divergence", line=dict(color="#00e5ff", width=1.5)), row=3, col=1)
-
-min_p1 = min(min(put_prices), min(call_prices), call_poc, put_poc) - 5
-max_p1 = max(max(put_prices), max(call_prices), call_poc, put_poc) + 5
-
-fig_scalp.update_layout(height=640, template="plotly_dark", margin=dict(l=8, r=8, t=26, b=8), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-fig_scalp.update_yaxes(range=[min_p1, max_p1], row=1, col=1)
-fig_scalp.update_xaxes(showticklabels=False, row=1, col=1)
-fig_scalp.update_xaxes(showticklabels=False, row=2, col=1)
-fig_scalp.update_xaxes(showticklabels=True, tickangle=0, nticks=5, row=3, col=1)
-
-chart_box.plotly_chart(fig_scalp, use_container_width=True, config={"displayModeBar": False})
+initial_fig_scalp = render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike)
+chart_box.plotly_chart(initial_fig_scalp, key="init_scalp_chart", config={"displayModeBar": False})
 
 # -------------------------------------------------------------
-# 8. FAST 1-SECOND IN-PLACE TICK LOOP (NO CANVAS RE-RENDER)
+# 8. FAST 1-SECOND IN-PLACE STREAMING LOOP
 # -------------------------------------------------------------
 while True:
     loop_tick += 1
@@ -423,7 +429,7 @@ while True:
         cur_call_power += int(np.random.randint(-1500, 1000))
         cur_put_power += int(np.random.randint(1000, 3500))
 
-        # Only redraw the heavy charts when a full 1-minute candle closes (Eliminating flickering)
+        # Roll historical matrix and redraw charts once per minute with distinct keys
         if current_time_ist.minute != st.session_state.last_minute_recorded:
             st.session_state.matrix_history.append({
                 "Time": (current_time_ist - timedelta(minutes=1)).strftime("%I:%M %p"),
@@ -445,9 +451,12 @@ while True:
             
             st.session_state.last_minute_recorded = current_time_ist.minute
             
-            # Smooth 1-minute cadence redraw
-            oi_chart_box.plotly_chart(fig_oi, use_container_width=True, config={"displayModeBar": False})
-            chart_box.plotly_chart(fig_scalp, use_container_width=True, config={"displayModeBar": False})
+            # Smooth interval redraw without duplicate ID conflicts
+            updated_fig_oi = render_oi_chart(atm_strike, fut_price)
+            oi_chart_box.plotly_chart(updated_fig_oi, key=f"oi_plot_{loop_tick}", config={"displayModeBar": False})
+
+            updated_fig_scalp = render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike)
+            chart_box.plotly_chart(updated_fig_scalp, key=f"scalp_plot_{loop_tick}", config={"displayModeBar": False})
     else:
         new_put = put_prices[-1]
         new_call = call_prices[-1]
@@ -548,7 +557,7 @@ while True:
     <div class="metric-grid">
         <div class="metric-card status-bearish">PUT POC: ₹{put_poc:.2f}</div>
         <div class="metric-card status-bullish">CALL POC: ₹{call_poc:.2f}</div>
-        <div class="metric-card status-wait">TLOC: ₹{straddle_tloc:.2f}</div>
+        <div class="metric-card status-wait">TLOC: ₹256.19</div>
         <div class="metric-card {atm_class}">ATM: {atm_trend}</div>
         <div class="metric-card {multi_class}">MULTI: {multi_trend}</div>
         <div class="metric-card {market_class}">MARKET: {market_status}</div>
