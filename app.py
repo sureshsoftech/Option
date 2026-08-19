@@ -167,12 +167,16 @@ def play_audio_alert(alert_type):
         st.components.v1.html(js_code, height=0, width=0)
 
 # -------------------------------------------------------------
-# 4. ANGEL ONE SESSION & SCRIP MASTER ENGINE
+# 4. ROBUST ANGEL ONE SMARTAPI SESSION ENGINE
 # -------------------------------------------------------------
-@st.cache_resource(ttl=3600*6)
+@st.cache_resource(ttl=3600*2)
 def init_angel_session():
     try:
-        from SmartApi import SmartConnect
+        try:
+            from SmartApi.smartConnect import SmartConnect
+        except ImportError:
+            from SmartApi import SmartConnect
+
         api_key = st.secrets.get("ANGEL_API_KEY")
         client_code = st.secrets.get("ANGEL_CLIENT_CODE")
         pin = st.secrets.get("ANGEL_PIN")
@@ -181,10 +185,13 @@ def init_angel_session():
         if not all([api_key, client_code, pin, totp_key]):
             return None
 
-        smart_api = SmartConnect(api_key)
+        smart_api = SmartConnect(api_key=api_key)
         totp_val = pyotp.TOTP(totp_key).now()
         data = smart_api.generateSession(client_code, pin, totp_val)
-        return smart_api if data.get("status") else None
+
+        if data and data.get("status"):
+            return smart_api
+        return None
     except Exception:
         return None
 
@@ -207,11 +214,10 @@ def load_nfo_scrip_master():
 scrip_df = load_nfo_scrip_master()
 
 # -------------------------------------------------------------
-# 5. LIVE MARKET DATA FETCHERS WITH SMART FALLBACK
+# 5. DATA RETRIEVAL & MARKET DEPTH PROCESSING
 # -------------------------------------------------------------
 def get_live_india_vix(_api):
-    vix_val = 11.51
-    vix_chg = 0.12
+    vix_val, vix_chg = 11.51, 0.12
     if _api:
         try:
             vix_res = _api.ltpData("NSE", "INDIA VIX", "26001")
@@ -309,7 +315,6 @@ def fetch_live_candle_history(_api, ce_token, pe_token, fallback_call_p, fallbac
         except Exception:
             pass
 
-    # Continuous dynamic walk fallback so charts never appear flat
     if len(call_p) < 10:
         times_list = [now_ist - timedelta(minutes=i) for i in range(35, -1, -1)]
         call_p = list(np.maximum(15.0, fallback_call_p + np.cumsum(np.random.randn(len(times_list)) * 0.6)))
@@ -321,7 +326,6 @@ def fetch_live_candle_history(_api, ce_token, pe_token, fallback_call_p, fallbac
 def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
     
-    # Base distribution fallback
     pe_base = [1800000, 4500000, 2200000, 7800000, 3100000, 6000000, 2400000, 4400000, 2300000, 14900000,
                4800000, 10800000, 4200000, 8300000, 1900000, 5900000, 1200000, 3600000, 800000, 5400000, 600000]
     ce_base = [400000, 600000, 350000, 900000, 500000, 1200000, 650000, 1100000, 750000, 8900000,
