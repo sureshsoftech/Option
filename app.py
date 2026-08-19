@@ -281,7 +281,6 @@ loop_tick = 0
 def build_sensibull_oi_data(atm_strike):
     strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
     
-    # Sensibull distribution baseline exactly matching live levels
     pe_base_vals = [850000, 4500000, 1900000, 7800000, 2800000, 6000000, 2100000, 4400000, 2100000, 14900000, 4500000, 10800000, 4200000, 8300000, 1900000, 5900000, 950000, 3600000, 550000, 5400000, 250000]
     pe_chg_vals  = [100000, 250000, -80000, 400000, 150000, -200000, 100000, 300000, -50000, 350000, -150000, 280000, -100000, 150000, -80000, 220000, -40000, 180000, -30000, 250000, 10000]
 
@@ -421,7 +420,7 @@ while True:
             play_audio_alert(fired_alert)
 
     # ---------------------------------------------------------
-    # 8. TOP HERO & METRIC BADGES (FAST IN-PLACE UPDATES)
+    # 8. TOP HERO & METRIC BADGES
     # ---------------------------------------------------------
     atm_header_box.markdown(f"""
     <div class="atm-hero-bar">
@@ -500,7 +499,7 @@ while True:
         """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 9. SENSIBULL OPEN INTEREST GRAPH (STABLE INTERVAL RENDERING)
+    # 9. SENSIBULL OPEN INTEREST GRAPH (CLEAN PLOTLY FIGURE)
     # ---------------------------------------------------------
     strikes, pe_base_vals, pe_chg_vals, ce_base_vals, ce_chg_vals = build_sensibull_oi_data(atm_strike)
     strike_labels = [str(s) for s in strikes]
@@ -521,11 +520,10 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # Render Open Interest & Scalp Chart on 1st tick and stable 3-tick intervals (No Screen Flickering)
     if loop_tick % 3 == 0 or loop_tick == 1 or not market_active:
         fig_oi = go.Figure()
 
-        # 1. Solid Put Base Bar
+        # Put Base Bar
         fig_oi.add_trace(go.Bar(
             name="Put OI",
             x=strike_labels,
@@ -534,7 +532,7 @@ while True:
             offsetgroup=0
         ))
 
-        # 2. Put Increase (Hatched pattern on top)
+        # Put Increase (Cross-hatched)
         pe_inc = [max(0, pe_chg_vals[i]) for i in range(len(strikes))]
         fig_oi.add_trace(go.Bar(
             name="Put Increase (Buildup)",
@@ -546,7 +544,7 @@ while True:
             offsetgroup=0
         ))
 
-        # 3. Put Decrease (Hollow box on top)
+        # Put Decrease (Hollow border)
         pe_dec = [abs(min(0, pe_chg_vals[i])) for i in range(len(strikes))]
         fig_oi.add_trace(go.Bar(
             name="Put Decrease (Unwinding)",
@@ -559,7 +557,7 @@ while True:
             offsetgroup=0
         ))
 
-        # 4. Solid Call Base Bar
+        # Call Base Bar
         fig_oi.add_trace(go.Bar(
             name="Call OI",
             x=strike_labels,
@@ -568,7 +566,7 @@ while True:
             offsetgroup=1
         ))
 
-        # 5. Call Increase (Hatched pattern on top)
+        # Call Increase (Cross-hatched)
         ce_inc = [max(0, ce_chg_vals[i]) for i in range(len(strikes))]
         fig_oi.add_trace(go.Bar(
             name="Call Increase (Buildup)",
@@ -580,7 +578,7 @@ while True:
             offsetgroup=1
         ))
 
-        # 6. Call Decrease (Hollow box on top)
+        # Call Decrease (Hollow border)
         ce_dec = [abs(min(0, ce_chg_vals[i])) for i in range(len(strikes))]
         fig_oi.add_trace(go.Bar(
             name="Call Decrease (Unwinding)",
@@ -593,22 +591,14 @@ while True:
             offsetgroup=1
         ))
 
-        # Vertical line for NIFTY Spot Strike
         atm_str_label = str(atm_strike)
-        fig_oi.add_vline(
-            x=atm_str_label,
-            line_dash="dash",
-            line_color="#94a3b8",
-            line_width=1.5,
-            annotation_text=f"NIFTY {fut_price:.2f}",
-            annotation_position="top"
-        )
 
+        # Standard layout configuration
         fig_oi.update_layout(
             title="📊 Open Interest & OI Change (10 Strikes Left & Right)",
             height=480,
             template="plotly_dark",
-            uirevision="constant_oi",  # Locks view and zoom state
+            uirevision="constant_oi",
             barmode="group",
             bargap=0.18,
             bargroupgap=0.04,
@@ -625,7 +615,29 @@ while True:
                 type="category",
                 tickangle=-45,
                 gridcolor="#1f2937"
-            )
+            ),
+            shapes=[
+                dict(
+                    type="line",
+                    x0=atm_str_label,
+                    x1=atm_str_label,
+                    y0=0,
+                    y1=1,
+                    yref="paper",
+                    line=dict(color="#94a3b8", width=1.5, dash="dash")
+                )
+            ],
+            annotations=[
+                dict(
+                    x=atm_str_label,
+                    y=1,
+                    yref="paper",
+                    text=f"NIFTY {fut_price:.2f}",
+                    showarrow=False,
+                    font=dict(color="#94a3b8", size=11),
+                    yshift=10
+                )
+            ]
         )
 
         try:
