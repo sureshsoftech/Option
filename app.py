@@ -258,7 +258,7 @@ if "last_minute_recorded" not in st.session_state:
 sentiment_tag = "🔴 Put Buyers Strong"
 multi_trend = "BEARISH"
 multi_class = "status-bearish"
-unwinding_status = "⚠️ Call Short-Covering Unwinding"
+unwinding_status = "🔥 Put Long Buildup (Heavy Put Buying)"
 
 # Initialize Scalp Timeseries
 n_bars = 35
@@ -399,7 +399,7 @@ def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     return fig_scalp
 
 # -------------------------------------------------------------
-# 7. INITIAL STATIC RENDERING (With Dynamic Key Protection)
+# 7. INITIAL STATIC RENDERING
 # -------------------------------------------------------------
 nifty_spot, fut_price, atm_strike, expiry_str, base_c, base_p = get_live_market_snapshot(smart_api)
 
@@ -410,7 +410,7 @@ initial_fig_scalp = render_scalp_chart(times_dt, put_prices, call_prices, volume
 chart_box.plotly_chart(initial_fig_scalp, key="init_scalp_chart", config={"displayModeBar": False})
 
 # -------------------------------------------------------------
-# 8. FAST 1-SECOND IN-PLACE STREAMING LOOP
+# 8. STREAMING LOOP
 # -------------------------------------------------------------
 while True:
     loop_tick += 1
@@ -461,27 +461,50 @@ while True:
         new_put = put_prices[-1]
         new_call = call_prices[-1]
 
-    # Power Sentiment Check
-    if cur_put_power > 1000000 and cur_call_power < 0:
-        sentiment_tag = "🔴 Put Buyers Strong"
-        multi_trend = "BEARISH"
-        multi_class = "status-bearish"
-        unwinding_status = "⚠️ Call Short-Covering Unwinding"
-    elif cur_call_power > 1000000 and cur_put_power < 0:
-        sentiment_tag = "🟢 Call Buyers Strong"
-        multi_trend = "BULLISH"
-        multi_class = "status-bullish"
-        unwinding_status = "⚠️ Put Unwinding"
-    else:
-        sentiment_tag = "🟡 Imbalance Neutral"
-        multi_trend = "MIXED"
-        multi_class = "status-wait"
-        unwinding_status = "Neutral OI Distribution"
-
-    # Fast in-place POC updates
+    # Fast in-place POC calculations
     put_poc = float(np.round(np.average(put_prices, weights=volumes), 2))
     call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
 
+    # ---------------------------------------------------------
+    # DYNAMIC 4-PHASE INSTITUTIONAL SHIFT ENGINE
+    # ---------------------------------------------------------
+    if new_put > put_poc and cur_put_power > 1000000:
+        unwinding_status = "🔥 Put Long Buildup (Heavy Put Buying)"
+        sentiment_tag = "🔴 Put Buyers Strong"
+        multi_trend = "BEARISH"
+        multi_class = "status-bearish"
+    elif new_call > call_poc and cur_call_power > 1000000:
+        unwinding_status = "🚀 Call Long Buildup (Heavy Call Buying)"
+        sentiment_tag = "🟢 Call Buyers Strong"
+        multi_trend = "BULLISH"
+        multi_class = "status-bullish"
+    elif cur_put_power > 1000000 and cur_call_power < 0:
+        unwinding_status = "⚠️ Call Short-Covering Unwinding"
+        sentiment_tag = "🔴 Put Buyers Strong"
+        multi_trend = "BEARISH"
+        multi_class = "status-bearish"
+    elif cur_call_power > 1000000 and cur_put_power < 0:
+        unwinding_status = "⚡ Put Unwinding (Sellers Trapped)"
+        sentiment_tag = "🟢 Call Buyers Strong"
+        multi_trend = "BULLISH"
+        multi_class = "status-bullish"
+    elif new_call < call_poc and cur_call_power > 500000:
+        unwinding_status = "🛡️ Call Short Buildup (Resistance Ceiling)"
+        sentiment_tag = "🔴 Call Sellers Active"
+        multi_trend = "BEARISH"
+        multi_class = "status-bearish"
+    elif new_put < put_poc and cur_put_power > 500000:
+        unwinding_status = "🛡️ Put Short Buildup (Support Floor)"
+        sentiment_tag = "🟢 Put Sellers Active"
+        multi_trend = "BULLISH"
+        multi_class = "status-bullish"
+    else:
+        unwinding_status = "Neutral OI Distribution"
+        sentiment_tag = "🟡 Imbalance Neutral"
+        multi_trend = "MIXED"
+        multi_class = "status-wait"
+
+    # ATM Trend Determination
     if new_put > put_poc and new_call < call_poc:
         atm_trend, atm_class = "BEARISH", "status-bearish"
     elif new_call > call_poc and new_put < put_poc:
