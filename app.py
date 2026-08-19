@@ -186,8 +186,8 @@ def init_angel_session():
 smart_api = init_angel_session()
 
 def get_live_market_snapshot(_api):
-    nifty_spot = 24063.50
-    fut_price = 24066.45
+    nifty_spot = 24080.45
+    fut_price = 24130.10
     expiry_str = "25 AUG"
     
     if _api:
@@ -195,7 +195,7 @@ def get_live_market_snapshot(_api):
             ltp_data = _api.ltpData("NSE", "Nifty 50", "99926000")
             if ltp_data and ltp_data.get("status"):
                 nifty_spot = float(ltp_data["data"]["ltp"])
-                fut_price = nifty_spot + 3.0
+                fut_price = nifty_spot + 49.65
         except Exception:
             pass
 
@@ -255,7 +255,12 @@ if "matrix_history" not in st.session_state:
 if "last_minute_recorded" not in st.session_state:
     st.session_state.last_minute_recorded = get_current_ist().minute
 
-# Scalp Timeseries
+# Global fallback defaults
+sentiment_tag = "🔴 Put Buyers Strong"
+multi_trend, multi_class = "BEARISH", "status-bearish"
+unwinding_status = "⚠️ Call Short-Covering Unwinding"
+
+# Initialize Scalp Timeseries
 n_bars = 35
 now_ist = get_current_ist()
 times = [now_ist - timedelta(minutes=i) for i in range(n_bars, -1, -1)]
@@ -353,6 +358,20 @@ while True:
         new_put = put_prices[-1]
         new_call = call_prices[-1]
 
+    # Power Sentiment Check
+    if cur_put_power > 1000000 and cur_call_power < 0:
+        sentiment_tag = "🔴 Put Buyers Strong"
+        multi_trend, multi_class = "BEARISH", "status-bearish"
+        unwinding_status = "⚠️ Call Short-Covering Unwinding"
+    elif cur_call_power > 1000000 and cur_put_power < 0:
+        sentiment_tag = "🟢 Call Buyers Strong"
+        multi_trend, multi_class = "BULLISH", "status-bullish"
+        unwinding_status = "⚠️ Put Unwinding"
+    else:
+        sentiment_tag = "🟡 Imbalance Neutral"
+        multi_trend, multi_class = "MIXED", "status-wait"
+        unwinding_status = "Neutral OI Distribution"
+
     # Quant Calculations
     put_poc = float(np.round(np.average(put_prices, weights=volumes), 2))
     call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
@@ -373,23 +392,13 @@ while True:
         if (call_prices[i] >= call_poc) and (delta_force[i] < -0.3):
             ts_dots_call[i] = call_prices[i] + 1.2
 
-    # Trend Determination
+    # Dual Trend Determination
     if new_put > put_poc and new_call < call_poc:
         atm_trend, atm_class = "BEARISH", "status-bearish"
     elif new_call > call_poc and new_put < put_poc:
         atm_trend, atm_class = "BULLISH", "status-bullish"
     else:
         atm_trend, atm_class = "SIDEWAYS", "status-wait"
-
-    if cur_put_power > 1000000 and cur_call_power < 0:
-        multi_trend, multi_class = "BEARISH", "status-bearish"
-        unwinding_status = "⚠️ Call Short-Covering Unwinding"
-    elif cur_call_power > 1000000 and cur_put_power < 0:
-        multi_trend, multi_class = "BULLISH", "status-bullish"
-        unwinding_status = "⚠️ Put Unwinding"
-    else:
-        multi_trend, multi_class = "MIXED", "status-wait"
-        unwinding_status = "Neutral OI Distribution"
 
     if market_active:
         if atm_trend == multi_trend and atm_trend in ["BULLISH", "BEARISH"]:
@@ -512,9 +521,10 @@ while True:
         """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 9. SENSIBULL OPEN INTEREST & OI CHANGE (ERROR-FREE NUMERIC X-AXIS)
+    # 9. SENSIBULL OPEN INTEREST & OI CHANGE GRAPH
     # ---------------------------------------------------------
     strikes, pe_yest, pe_chg, ce_yest, ce_chg = build_sensibull_oi_data(atm_strike)
+    strike_categories = [str(s) for s in strikes]
     
     total_pe_oi = sum(pe_yest) + sum(pe_chg)
     total_ce_oi = sum(ce_yest) + sum(ce_chg)
@@ -537,7 +547,7 @@ while True:
     # PUT OI (GREEN)
     pe_solid = [min(pe_yest[i], pe_yest[i] + pe_chg[i]) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strikes, y=pe_solid,
+        x=strike_categories, y=pe_solid,
         name="Put OI",
         marker_color="#22c55e",
         offsetgroup=0
@@ -545,7 +555,7 @@ while True:
     
     pe_inc = [max(0, pe_chg[i]) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strikes, y=pe_inc,
+        x=strike_categories, y=pe_inc,
         base=pe_solid,
         name="Put Increase (Buildup)",
         marker_color="#22c55e",
@@ -555,7 +565,7 @@ while True:
     
     pe_dec = [abs(min(0, pe_chg[i])) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strikes, y=pe_dec,
+        x=strike_categories, y=pe_dec,
         base=pe_solid,
         name="Put Decrease (Unwinding)",
         marker_color="rgba(0,0,0,0)",
@@ -567,7 +577,7 @@ while True:
     # CALL OI (RED)
     ce_solid = [min(ce_yest[i], ce_yest[i] + ce_chg[i]) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strikes, y=ce_solid,
+        x=strike_categories, y=ce_solid,
         name="Call OI",
         marker_color="#ef4444",
         offsetgroup=1
@@ -575,7 +585,7 @@ while True:
     
     ce_inc = [max(0, ce_chg[i]) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strikes, y=ce_inc,
+        x=strike_categories, y=ce_inc,
         base=ce_solid,
         name="Call Increase (Buildup)",
         marker_color="#ef4444",
@@ -585,7 +595,7 @@ while True:
     
     ce_dec = [abs(min(0, ce_chg[i])) for i in range(len(strikes))]
     fig_oi.add_trace(go.Bar(
-        x=strikes, y=ce_dec,
+        x=strike_categories, y=ce_dec,
         base=ce_solid,
         name="Call Decrease (Unwinding)",
         marker_color="rgba(0,0,0,0)",
@@ -594,14 +604,23 @@ while True:
         offsetgroup=1
     ))
 
-    # Dotted line at NIFTY Spot Strike (Using numeric coordinates)
-    fig_oi.add_vline(
-        x=atm_strike,
-        line_dash="dash",
-        line_color="#94a3b8",
-        line_width=1.5,
-        annotation_text=f"NIFTY {fut_price:.2f}",
-        annotation_position="top"
+    # Clean Shape Overlay for Nifty Spot indicator
+    atm_str_label = str(atm_strike)
+    fig_oi.add_shape(
+        type="line",
+        x0=atm_str_label, x1=atm_str_label,
+        y0=0, y1=1,
+        yref="paper",
+        line=dict(color="#94a3b8", width=1.5, dash="dash")
+    )
+    fig_oi.add_annotation(
+        x=atm_str_label,
+        y=1,
+        yref="paper",
+        text=f"NIFTY {fut_price:.2f}",
+        showarrow=False,
+        font=dict(color="#94a3b8", size=11),
+        yshift=10
     )
 
     fig_oi.update_layout(
@@ -611,7 +630,7 @@ while True:
         barmode="group",
         bargap=0.18,
         bargroupgap=0.04,
-        margin=dict(l=10, r=10, t=36, b=10),
+        margin=dict(l=10, r=10, t=40, b=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         yaxis=dict(
             title="Contracts (OI)",
@@ -621,8 +640,6 @@ while True:
         ),
         xaxis=dict(
             title="Strike Prices",
-            tickmode="array",
-            tickvals=strikes,
             tickangle=-45,
             gridcolor="#1f2937"
         )
