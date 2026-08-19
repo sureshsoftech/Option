@@ -167,9 +167,9 @@ def play_audio_alert(alert_type):
         st.components.v1.html(js_code, height=0, width=0)
 
 # -------------------------------------------------------------
-# 4. DIRECT ANGEL ONE SESSION INITIALIZER
+# 4. ROBUST ANGEL ONE SMARTAPI SESSION & DIAGNOSTICS
 # -------------------------------------------------------------
-def init_angel_session():
+def authenticate_angel():
     try:
         try:
             from SmartApi.smartConnect import SmartConnect
@@ -182,22 +182,27 @@ def init_angel_session():
         totp_key = str(st.secrets.get("ANGEL_TOTP_KEY", "")).strip()
 
         if not all([api_key, client_code, pin, totp_key]):
-            return None
+            return None, "Missing Streamlit Secrets (Check ANGEL_* keys)"
 
-        smart_api = SmartConnect(api_key)
+        smart_api = SmartConnect(api_key=api_key)
         totp_val = pyotp.TOTP(totp_key).now()
         data = smart_api.generateSession(client_code, pin, totp_val)
 
         if data and data.get("status"):
-            return smart_api
-        return None
-    except Exception:
-        return None
+            return smart_api, "Connected (Token Valid)"
+        else:
+            err_msg = data.get("message", "Authentication Failed") if data else "Empty API Response"
+            return None, f"Angel Rejected: {err_msg}"
+    except Exception as e:
+        return None, f"Error: {str(e)}"
 
-if "smart_api_client" not in st.session_state or st.session_state.smart_api_client is None:
-    st.session_state.smart_api_client = init_angel_session()
-
-smart_api = st.session_state.smart_api_client
+if "smart_api_obj" not in st.session_state or st.session_state.smart_api_obj is None:
+    smart_api, auth_log = authenticate_angel()
+    st.session_state.smart_api_obj = smart_api
+    st.session_state.smart_api_log = auth_log
+else:
+    smart_api = st.session_state.smart_api_obj
+    auth_log = st.session_state.smart_api_log
 
 @st.cache_resource(ttl=3600*12)
 def load_nfo_scrip_master():
@@ -510,7 +515,7 @@ strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_
 col_head, col_ctrl1, col_ctrl2 = st.columns([3, 1, 1.2])
 with col_head:
     st.title("⚡ Quant OptionScalp & Sensibull Live Desk")
-    conn_badge = "🟢 Angel One SmartAPI Feed (IST)" if is_live else "🟡 Live-Calibrated Feed (IST)"
+    conn_badge = "🟢 Angel One SmartAPI Feed (IST)" if (smart_api and is_live) else f"🟡 Feed Status: {auth_log}"
     st.caption(f"Session Status: {conn_badge}")
 
 with col_ctrl1:
