@@ -177,15 +177,16 @@ def init_angel_session():
         except ImportError:
             from SmartApi import SmartConnect
 
-        api_key = st.secrets.get("ANGEL_API_KEY")
-        client_code = st.secrets.get("ANGEL_CLIENT_CODE")
-        pin = st.secrets.get("ANGEL_PIN")
-        totp_key = st.secrets.get("ANGEL_TOTP_KEY")
+        api_key = str(st.secrets.get("ANGEL_API_KEY", "")).strip()
+        client_code = str(st.secrets.get("ANGEL_CLIENT_CODE", "")).strip()
+        pin = str(st.secrets.get("ANGEL_PIN", "")).strip()
+        totp_key = str(st.secrets.get("ANGEL_TOTP_KEY", "")).strip()
 
         if not all([api_key, client_code, pin, totp_key]):
             return None
 
-        smart_api = SmartConnect(api_key=api_key)
+        # Positional syntax ensures compatibility with all versions of SmartAPI
+        smart_api = SmartConnect(api_key)
         totp_val = pyotp.TOTP(totp_key).now()
         data = smart_api.generateSession(client_code, pin, totp_val)
 
