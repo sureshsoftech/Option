@@ -167,7 +167,7 @@ def play_audio_alert(alert_type):
         st.components.v1.html(js_code, height=0, width=0)
 
 # -------------------------------------------------------------
-# 4. DIRECT REST API SESSION ENGINE
+# 4. DIRECT REST API SESSION ENGINE (Zero Dependency Issues)
 # -------------------------------------------------------------
 class AngelDirectClient:
     def __init__(self, jwt_token, api_key):
@@ -271,7 +271,7 @@ def load_nfo_scrip_master():
 scrip_df = load_nfo_scrip_master()
 
 # -------------------------------------------------------------
-# 5. DATA RETRIEVAL & MARKET DEPTH PROCESSING
+# 5. DATA RETRIEVAL & MARKET SNAPSHOT
 # -------------------------------------------------------------
 def get_live_india_vix(_api):
     vix_val, vix_chg = 11.45, 0.06
@@ -397,6 +397,9 @@ def fetch_live_candle_history(_api, ce_token, pe_token, fallback_call_p, fallbac
 
     return times_list, call_p, put_p, vols
 
+# -------------------------------------------------------------
+# 6. LIVE OPTION CHAIN & REAL CALL/PUT POWER FROM ORDER FLOW
+# -------------------------------------------------------------
 def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
     
@@ -581,7 +584,7 @@ def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     return fig_scalp
 
 # -------------------------------------------------------------
-# 6. HEADER & DASHBOARD PLACEHOLDERS
+# 7. HEADER & DASHBOARD PLACEHOLDERS
 # -------------------------------------------------------------
 nifty_spot, fut_price, atm_strike, expiry_str, call_ltp, put_ltp, ce_token, pe_token, ce_symbol, pe_symbol = get_live_market_snapshot(smart_api, scrip_df)
 strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, live_pcr, total_ce_oi, total_pe_oi, is_live = fetch_live_oi_and_power(smart_api, scrip_df, atm_strike)
@@ -622,17 +625,17 @@ if "current_live_call" not in st.session_state:
 base_t = get_current_ist()
 if "matrix_history" not in st.session_state:
     st.session_state.matrix_history = [
-        {"Time": (base_t - timedelta(minutes=4)).strftime("%I:%M %p"), "Call Power": -473160, "Put Power": 1386372, "Sentiment": "🔴 Put Buyers Strong"},
-        {"Time": (base_t - timedelta(minutes=3)).strftime("%I:%M %p"), "Call Power": -491657, "Put Power": 1416448, "Sentiment": "🔴 Put Buyers Strong"},
-        {"Time": (base_t - timedelta(minutes=2)).strftime("%I:%M %p"), "Call Power": -561119, "Put Power": 1561832, "Sentiment": "🔴 Put Buyers Strong"},
-        {"Time": (base_t - timedelta(minutes=1)).strftime("%I:%M %p"), "Call Power": -575400, "Put Power": 1590200, "Sentiment": "🔴 Put Buyers Strong"},
+        {"Time": (base_t - timedelta(minutes=4)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > 0 else "🟢 Call Buyers Strong"},
+        {"Time": (base_t - timedelta(minutes=3)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > 0 else "🟢 Call Buyers Strong"},
+        {"Time": (base_t - timedelta(minutes=2)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > 0 else "🟢 Call Buyers Strong"},
+        {"Time": (base_t - timedelta(minutes=1)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > 0 else "🟢 Call Buyers Strong"},
     ]
 
 if "last_minute_recorded" not in st.session_state:
     st.session_state.last_minute_recorded = get_current_ist().minute
 
 # -------------------------------------------------------------
-# 7. INITIAL LIVE SNAPSHOT FETCH
+# 8. INITIAL LIVE SNAPSHOT FETCH
 # -------------------------------------------------------------
 live_vix, live_vix_chg = get_live_india_vix(smart_api)
 times_dt, put_prices, call_prices, volumes = fetch_live_candle_history(smart_api, ce_token, pe_token, call_ltp, put_ltp)
@@ -645,10 +648,11 @@ chart_box.plotly_chart(initial_fig_scalp, key="init_scalp_chart", config={"displ
 
 cur_call_power = live_cp
 cur_put_power = live_pp
+sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > 0 else "🟢 Call Buyers Strong"
 loop_tick = 0
 
 # -------------------------------------------------------------
-# 8. STREAMING LOOP
+# 9. STREAMING LOOP (100% Live Stream)
 # -------------------------------------------------------------
 while True:
     loop_tick += 1
@@ -662,21 +666,18 @@ while True:
         put_prices[-1] = new_put
         call_prices[-1] = new_call
 
+        # Fetch LIVE order depth across strikes directly from Angel One
         strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, live_pcr, total_ce_oi, total_pe_oi, is_live = fetch_live_oi_and_power(smart_api, scrip_df, atm_strike)
-        
-        if is_live:
-            cur_call_power = live_cp
-            cur_put_power = live_pp
-        else:
-            cur_call_power += int(np.random.randint(-1500, 1000))
-            cur_put_power += int(np.random.randint(1000, 3500))
+        cur_call_power = live_cp
+        cur_put_power = live_pp
+        sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > 0 else "🟢 Call Buyers Strong"
 
         if current_time_ist.minute != st.session_state.last_minute_recorded:
             st.session_state.matrix_history.append({
                 "Time": (current_time_ist - timedelta(minutes=1)).strftime("%I:%M %p"),
                 "Call Power": cur_call_power,
                 "Put Power": cur_put_power,
-                "Sentiment": "🔴 Put Buyers Strong" if cur_put_power > 0 else "🟢 Call Buyers Strong"
+                "Sentiment": sentiment_tag
             })
             if len(st.session_state.matrix_history) > 4:
                 st.session_state.matrix_history.pop(0)
@@ -697,41 +698,26 @@ while True:
     call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
 
     # ---------------------------------------------------------
-    # 9. LIVE INSTITUTIONAL PATTERN ENGINE
+    # 10. LIVE INSTITUTIONAL PATTERN ENGINE
     # ---------------------------------------------------------
-    if new_put > put_poc and cur_put_power > 1000000:
+    if new_put > put_poc and cur_put_power > 0:
         unwinding_status = "🔥 Put Long Buildup (Heavy Put Buying)"
-        sentiment_tag = "🔴 Put Buyers Strong"
         multi_trend = "BEARISH"
         multi_class = "status-bearish"
-    elif new_call > call_poc and cur_call_power > 1000000:
+    elif new_call > call_poc and cur_call_power > 0:
         unwinding_status = "🚀 Call Long Buildup (Heavy Call Buying)"
-        sentiment_tag = "🟢 Call Buyers Strong"
         multi_trend = "BULLISH"
         multi_class = "status-bullish"
-    elif cur_put_power > 1000000 and cur_call_power < 0:
+    elif cur_put_power > 0 and cur_call_power < 0:
         unwinding_status = "⚠️ Call Short-Covering Unwinding"
-        sentiment_tag = "🔴 Put Buyers Strong"
         multi_trend = "BEARISH"
         multi_class = "status-bearish"
-    elif cur_call_power > 1000000 and cur_put_power < 0:
+    elif cur_call_power > 0 and cur_put_power < 0:
         unwinding_status = "⚡ Put Unwinding (Sellers Trapped)"
-        sentiment_tag = "🟢 Call Buyers Strong"
-        multi_trend = "BULLISH"
-        multi_class = "status-bullish"
-    elif new_call < call_poc and cur_call_power > 500000:
-        unwinding_status = "🛡️ Call Short Buildup (Resistance Ceiling)"
-        sentiment_tag = "🔴 Call Sellers Active"
-        multi_trend = "BEARISH"
-        multi_class = "status-bearish"
-    elif new_put < put_poc and cur_put_power > 500000:
-        unwinding_status = "🛡️ Put Short Buildup (Support Floor)"
-        sentiment_tag = "🟢 Put Sellers Active"
         multi_trend = "BULLISH"
         multi_class = "status-bullish"
     else:
         unwinding_status = "Neutral OI Distribution"
-        sentiment_tag = "🟡 Imbalance Neutral"
         multi_trend = "MIXED"
         multi_class = "status-wait"
 
@@ -784,7 +770,7 @@ while True:
             play_audio_alert(fired_alert)
 
     # ---------------------------------------------------------
-    # 10. FAST IN-PLACE DOM UPDATES
+    # 11. FAST IN-PLACE DOM UPDATES
     # ---------------------------------------------------------
     atm_header_box.markdown(f"""
     <div class="atm-hero-bar">
@@ -878,7 +864,7 @@ while True:
     """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 11. POWER MATRIX TABLE
+    # 12. LIVE POWER MATRIX TABLE (Real Institutional Order Flow)
     # ---------------------------------------------------------
     live_time_label = f"🔴 LIVE ({current_time_ist.strftime('%I:%M:%S %p')})" if market_active else f"⏸️ CLOSED ({current_time_ist.strftime('%I:%M:%S %p')})"
     table_rows = [{
