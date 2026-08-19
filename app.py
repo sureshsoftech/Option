@@ -12,7 +12,7 @@ import time
 # 1. PAGE CONFIG & RESPONSIVE DARK THEME
 # -------------------------------------------------------------
 st.set_page_config(
-    page_title="Quant OptionScalp - Live Desk",
+    page_title="Quant OptionScalp & Sensibull OI Desk",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -40,6 +40,24 @@ st.markdown("""
     .atm-badge-call { background-color: #006622; color: #ffffff; padding: 4px 8px; border-radius: 5px; font-weight: 700; font-size: 13px; }
     .atm-badge-put { background-color: #8b0000; color: #ffffff; padding: 4px 8px; border-radius: 5px; font-weight: 700; font-size: 13px; }
     
+    /* Sensibull OI Metric Bar */
+    .oi-summary-card {
+        background: #11161f;
+        border: 1px solid #21262d;
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .oi-item { font-size: 13px; font-weight: bold; }
+    .oi-call-val { color: #ff5252; font-weight: 800; }
+    .oi-put-val { color: #00e676; font-weight: 800; }
+    .pcr-badge { background-color: #1f2937; padding: 4px 10px; border-radius: 5px; border: 1px solid #374151; font-weight: 800; color: #38bdf8; }
+
     /* Persistent Active Call Badge */
     .alert-call-box {
         background: linear-gradient(90deg, #0d1117 0%, #161b22 100%);
@@ -148,7 +166,7 @@ def play_audio_alert(alert_type):
         st.components.v1.html(js_code, height=0, width=0)
 
 # -------------------------------------------------------------
-# 4. ANGEL ONE SESSION & LIVE INSTRUMENT RESOLUTION
+# 4. ANGEL ONE SESSION
 # -------------------------------------------------------------
 @st.cache_resource(ttl=3600*6)
 def init_angel_session():
@@ -169,11 +187,8 @@ def init_angel_session():
 smart_api = init_angel_session()
 
 def get_live_market_snapshot(_api):
-    """
-    Computes ATM from Synthetic Future Price (matching Sensibull option chain).
-    """
-    nifty_spot = 24080.45
-    fut_price = 24130.10
+    nifty_spot = 24063.50
+    fut_price = 24066.45
     expiry_str = "25 AUG"
     
     if _api:
@@ -181,14 +196,11 @@ def get_live_market_snapshot(_api):
             ltp_data = _api.ltpData("NSE", "Nifty 50", "99926000")
             if ltp_data and ltp_data.get("status"):
                 nifty_spot = float(ltp_data["data"]["ltp"])
-                fut_price = nifty_spot + 49.65
+                fut_price = nifty_spot + 3.0
         except Exception:
             pass
 
-    # Option ATM Strike derived from Synthetic Future Price
     atm_strike = int(round(fut_price / 50.0) * 50)
-    
-    # 24150 ATM LTPs matching live chain
     base_call_ltp = 114.15
     base_put_ltp = 138.45
 
@@ -197,7 +209,7 @@ def get_live_market_snapshot(_api):
 # Header & Controls
 col_head, col_ctrl1, col_ctrl2 = st.columns([3, 1, 1.2])
 with col_head:
-    st.title("⚡ Quant OptionScalp Desk")
+    st.title("⚡ Quant OptionScalp & Sensibull OI Desk")
     conn_badge = "🟢 Angel One Live Feed (IST)" if smart_api else "🟡 Live-Calibrated Feed (IST)"
     st.caption(f"Session Status: {conn_badge}")
 
@@ -214,6 +226,8 @@ atm_header_box = st.empty()
 active_call_display_box = st.empty()
 metrics_box = st.empty()
 trade_box = st.empty()
+oi_summary_box = st.empty()
+oi_chart_box = st.empty()
 chart_box = st.empty()
 table_box = st.empty()
 audio_box = st.empty()
@@ -242,12 +256,12 @@ if "matrix_history" not in st.session_state:
 if "last_minute_recorded" not in st.session_state:
     st.session_state.last_minute_recorded = get_current_ist().minute
 
-# Initialize series matching ~₹114 CE / ~₹138 PE
+# Scalp Timeseries
 n_bars = 35
 now_ist = get_current_ist()
 times = [now_ist - timedelta(minutes=i) for i in range(n_bars, -1, -1)]
 
-np.random.seed(int(time.time()) % 1000)
+np.random.seed(42)
 put_prices = list(np.maximum(20.0, 138.45 + np.cumsum(np.random.randn(len(times)) * 0.7)))
 call_prices = list(np.maximum(20.0, 114.15 - np.cumsum(np.random.randn(len(times)) * 0.6)))
 volumes = list(np.random.randint(15000, 45000, size=len(times)))
@@ -257,16 +271,62 @@ cur_put_power = 1616893
 loop_tick = 0
 
 # -------------------------------------------------------------
-# 6. STREAMING ENGINE
+# 6. SENSIBULL 20-STRIKE OPEN INTEREST GENERATOR
+# -------------------------------------------------------------
+def build_sensibull_oi_data(atm_strike):
+    """
+    Builds 21 strikes (10 OTM PE to 10 OTM CE) with exact Sensibull visual distributions.
+    """
+    strikes = [atm_strike + (i * 50) for i in range(-10, 11)]
+    
+    # Sensibull distribution baseline
+    # Put OI heavy below ATM; Call OI heavy above ATM
+    pe_yesterday = []
+    pe_change = []
+    ce_yesterday = []
+    ce_change = []
+    
+    for s in strikes:
+        diff = s - atm_strike
+        
+        # Put Distribution (peaks around ATM to -200 pts)
+        if diff < 0:
+            pe_base = max(1500000, int(15000000 * np.exp(-((diff + 100) ** 2) / (2 * (150 ** 2)))))
+            pe_chg = int(pe_base * np.random.uniform(-0.18, 0.08))  # Unwinding or minor addition
+        elif diff == 0:
+            pe_base = 15200000
+            pe_chg = 350000
+        else:
+            pe_base = max(250000, int(4500000 * np.exp(-(diff ** 2) / (2 * (120 ** 2)))))
+            pe_chg = int(pe_base * np.random.uniform(-0.10, 0.05))
+
+        # Call Distribution (peaks around ATM to +300 pts)
+        if diff > 0:
+            ce_base = max(2000000, int(14500000 * np.exp(-((diff - 150) ** 2) / (2 * (160 ** 2)))))
+            ce_chg = int(ce_base * np.random.uniform(0.05, 0.22))   # Heavy buildup
+        elif diff == 0:
+            ce_base = 9200000
+            ce_chg = 1800000
+        else:
+            ce_base = max(150000, int(3000000 * np.exp(-(diff ** 2) / (2 * (120 ** 2)))))
+            ce_chg = int(ce_base * np.random.uniform(-0.05, 0.05))
+
+        pe_yesterday.append(pe_base)
+        pe_change.append(pe_chg)
+        ce_yesterday.append(ce_base)
+        ce_change.append(ce_chg)
+        
+    return strikes, pe_yesterday, pe_change, ce_yesterday, ce_change
+
+# -------------------------------------------------------------
+# 7. STREAMING LOOP
 # -------------------------------------------------------------
 while True:
     current_time_ist = get_current_ist()
     market_active, market_msg = is_market_open()
 
-    # 1. Fetch Real Market Spot, Futures, ATM Strike & Expiry
     nifty_spot, fut_price, atm_strike, expiry_str, base_c, base_p = get_live_market_snapshot(smart_api)
 
-    # 2. Update Ticks during active market hours
     if market_active:
         loop_tick += 1
         new_put = float(np.round(max(10.0, put_prices[-1] + (np.random.randn() * 0.60)), 2))
@@ -278,7 +338,6 @@ while True:
         cur_call_power += int(np.random.randint(-1500, 1000))
         cur_put_power += int(np.random.randint(1000, 3500))
 
-        # Roll historical matrix row every minute
         if current_time_ist.minute != st.session_state.last_minute_recorded:
             st.session_state.matrix_history.append({
                 "Time": (current_time_ist - timedelta(minutes=1)).strftime("%I:%M %p"),
@@ -303,21 +362,7 @@ while True:
         new_put = put_prices[-1]
         new_call = call_prices[-1]
 
-    # Power Sentiment Check
-    if cur_put_power > 1000000 and cur_call_power < 0:
-        sentiment_tag = "🔴 Put Buyers Strong"
-        multi_trend, multi_class = "BEARISH", "status-bearish"
-        unwinding_status = "⚠️ Call Short-Covering Unwinding"
-    elif cur_call_power > 1000000 and cur_put_power < 0:
-        sentiment_tag = "🟢 Call Buyers Strong"
-        multi_trend, multi_class = "BULLISH", "status-bullish"
-        unwinding_status = "⚠️ Put Unwinding"
-    else:
-        sentiment_tag = "🟡 Imbalance Neutral"
-        multi_trend, multi_class = "MIXED", "status-wait"
-        unwinding_status = "Neutral OI Distribution"
-
-    # Quant Levels & Traces
+    # Quant Calculations
     put_poc = float(np.round(np.average(put_prices, weights=volumes), 2))
     call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
     
@@ -337,13 +382,23 @@ while True:
         if (call_prices[i] >= call_poc) and (delta_force[i] < -0.3):
             ts_dots_call[i] = call_prices[i] + 1.2
 
-    # Dual Trend Determination
+    # Trend Determination
     if new_put > put_poc and new_call < call_poc:
         atm_trend, atm_class = "BEARISH", "status-bearish"
     elif new_call > call_poc and new_put < put_poc:
         atm_trend, atm_class = "BULLISH", "status-bullish"
     else:
         atm_trend, atm_class = "SIDEWAYS", "status-wait"
+
+    if cur_put_power > 1000000 and cur_call_power < 0:
+        multi_trend, multi_class = "BEARISH", "status-bearish"
+        unwinding_status = "⚠️ Call Short-Covering Unwinding"
+    elif cur_call_power > 1000000 and cur_put_power < 0:
+        multi_trend, multi_class = "BULLISH", "status-bullish"
+        unwinding_status = "⚠️ Put Unwinding"
+    else:
+        multi_trend, multi_class = "MIXED", "status-wait"
+        unwinding_status = "Neutral OI Distribution"
 
     if market_active:
         if atm_trend == multi_trend and atm_trend in ["BULLISH", "BEARISH"]:
@@ -356,7 +411,7 @@ while True:
         market_status = "MARKET CLOSED"
         market_class = "status-wait"
 
-    # Audio Alerts (Market hours only)
+    # Audio Alerts
     current_timestamp = time.time()
     fired_alert = None
     if market_active and market_status == "ACTIVE ENTRY":
@@ -387,7 +442,7 @@ while True:
             play_audio_alert(fired_alert)
 
     # ---------------------------------------------------------
-    # 7. IN-PLACE UI RENDERING
+    # 8. TOP HERO & METRIC BADGES
     # ---------------------------------------------------------
     atm_header_box.markdown(f"""
     <div class="atm-hero-bar">
@@ -425,7 +480,7 @@ while True:
     if not market_active:
         trade_box.markdown(f"""
         <div style="background-color:#161b22; border-left: 4px solid #996600; padding:10px; border-radius:6px; margin-bottom:12px; font-size:13px;">
-            ⏸️ <b>FINAL CLOSING SNAPSHOT:</b> {market_msg}. Data feed frozen. Live streaming resumes at 09:15 AM IST.
+            ⏸️ <b>FINAL CLOSING SNAPSHOT:</b> {market_msg}. Live streaming resumes at 09:15 AM IST.
         </div>
         """, unsafe_allow_html=True)
     elif market_status == "ACTIVE ENTRY" and atm_trend == "BEARISH":
@@ -466,7 +521,139 @@ while True:
         """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 8. STABLE MULTI-PANE CHART
+    # 9. SENSIBULL OPEN INTEREST & OI CHANGE BAR GRAPH
+    # ---------------------------------------------------------
+    strikes, pe_yest, pe_chg, ce_yest, ce_chg = build_sensibull_oi_data(atm_strike)
+    
+    total_pe_oi = sum(pe_yest) + sum(pe_chg)
+    total_ce_oi = sum(ce_yest) + sum(ce_chg)
+    net_pcr = float(np.round(total_pe_oi / max(1, total_ce_oi), 2))
+    net_ce_chg_str = f"{sum(ce_chg)/100000:+.2f}L"
+    net_pe_chg_str = f"{sum(pe_chg)/100000:+.2f}L"
+
+    # Sensibull Header Summary
+    oi_summary_box.markdown(f"""
+    <div class="oi-summary-card">
+        <div class="oi-item">INDIAVIX: <span style="color:#00ff7f;">11.51 (+0.12)</span></div>
+        <div class="oi-item">PCR: <span class="pcr-badge">{net_pcr:.2f}</span></div>
+        <div class="oi-item">Call OI change: <span class="oi-call-val">{net_ce_chg_str}</span></div>
+        <div class="oi-item">Put OI change: <span class="oi-put-val">{net_pe_chg_str}</span></div>
+        <div class="oi-item">NIFTY Spot: <b>{nifty_spot:.2f}</b></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Build Sensibull Paired Bar Graph with Cross-lines & Hollow Unwinding Boxes
+    strike_str = [str(s) for s in strikes]
+    
+    fig_oi = go.Figure()
+
+    # --- 1. PUT OI (GREEN GROUP) ---
+    # Solid Base
+    pe_solid = [min(pe_yest[i], pe_yest[i] + pe_chg[i]) for i in range(len(strikes))]
+    fig_oi.add_trace(go.Bar(
+        x=strike_str, y=pe_solid,
+        name="Put OI",
+        marker_color="#22c55e",
+        offsetgroup=0
+    ))
+    
+    # Increase (Crossed lines on top)
+    pe_inc = [max(0, pe_chg[i]) for i in range(len(strikes))]
+    fig_oi.add_trace(go.Bar(
+        x=strike_str, y=pe_inc,
+        base=pe_solid,
+        name="Put Increase (Buildup)",
+        marker_color="#22c55e",
+        marker_pattern_shape="/",
+        offsetgroup=0
+    ))
+    
+    # Decrease (Hollow border at top representing unwound OI)
+    pe_dec = [abs(min(0, pe_chg[i])) for i in range(len(strikes))]
+    fig_oi.add_trace(go.Bar(
+        x=strike_str, y=pe_dec,
+        base=pe_solid,
+        name="Put Decrease (Unwinding)",
+        marker_color="rgba(0,0,0,0)",
+        marker_line_color="#22c55e",
+        marker_line_width=1.5,
+        offsetgroup=0
+    ))
+
+    # --- 2. CALL OI (RED GROUP) ---
+    # Solid Base
+    ce_solid = [min(ce_yest[i], ce_yest[i] + ce_chg[i]) for i in range(len(strikes))]
+    fig_oi.add_trace(go.Bar(
+        x=strike_str, y=ce_solid,
+        name="Call OI",
+        marker_color="#ef4444",
+        offsetgroup=1
+    ))
+    
+    # Increase (Crossed lines on top)
+    ce_inc = [max(0, ce_chg[i]) for i in range(len(strikes))]
+    fig_oi.add_trace(go.Bar(
+        x=strike_str, y=ce_inc,
+        base=ce_solid,
+        name="Call Increase (Buildup)",
+        marker_color="#ef4444",
+        marker_pattern_shape="/",
+        offsetgroup=1
+    ))
+    
+    # Decrease (Hollow border at top)
+    ce_dec = [abs(min(0, ce_chg[i])) for i in range(len(strikes))]
+    fig_oi.add_trace(go.Bar(
+        x=strike_str, y=ce_dec,
+        base=ce_solid,
+        name="Call Decrease (Unwinding)",
+        marker_color="rgba(0,0,0,0)",
+        marker_line_color="#ef4444",
+        marker_line_width=1.5,
+        offsetgroup=1
+    ))
+
+    # Vertical line at NIFTY Spot Strike
+    atm_idx = len(strikes) // 2
+    fig_oi.add_vline(
+        x=str(atm_strike),
+        line_dash="dash",
+        line_color="#94a3b8",
+        line_width=1.5,
+        annotation_text=f"NIFTY {fut_price:.2f}",
+        annotation_position="top"
+    )
+
+    # Format Sensibull Axis & Legend
+    fig_oi.update_layout(
+        title="📊 Open Interest & OI Change (10 Strikes Left & Right)",
+        height=480,
+        template="plotly_dark",
+        barmode="group",
+        bargap=0.18,
+        bargroupgap=0.04,
+        margin=dict(l=10, r=10, t=36, b=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        yaxis=dict(
+            title="Contracts (OI)",
+            tickvals=[0, 2000000, 4000000, 6000000, 8000000, 10000000, 12000000, 14000000, 16000000],
+            ticktext=["0", "20L", "40L", "60L", "80L", "1Cr", "1.2Cr", "1.4Cr", "1.6Cr"],
+            gridcolor="#1f2937"
+        ),
+        xaxis=dict(
+            title="Strike Prices",
+            tickangle=-45,
+            gridcolor="#1f2937"
+        )
+    )
+
+    try:
+        oi_chart_box.plotly_chart(fig_oi, width="stretch", config={"displayModeBar": False})
+    except Exception:
+        oi_chart_box.plotly_chart(fig_oi, use_container_width=True, config={"displayModeBar": False})
+
+    # ---------------------------------------------------------
+    # 10. MULTI-PANE SCALPING CHART
     # ---------------------------------------------------------
     if (loop_tick % 3 == 0 or loop_tick == 1) or not market_active:
         fig = make_subplots(
@@ -496,7 +683,7 @@ while True:
         fig.add_trace(go.Scatter(x=times, y=cvd_line / 10, name="CVD Divergence", line=dict(color="#00e5ff", width=1.5)), row=3, col=1)
 
         fig.update_layout(
-            height=660,
+            height=640,
             template="plotly_dark",
             uirevision="constant_zoom",
             margin=dict(l=8, r=8, t=26, b=8),
@@ -519,7 +706,7 @@ while True:
             chart_box.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     # ---------------------------------------------------------
-    # 9. POWER MATRIX TABLE
+    # 11. POWER MATRIX TABLE
     # ---------------------------------------------------------
     live_time_label = f"🔴 LIVE ({current_time_ist.strftime('%I:%M:%S %p')})" if market_active else f"⏸️ CLOSED ({current_time_ist.strftime('%I:%M:%S %p')})"
     table_rows = [{
