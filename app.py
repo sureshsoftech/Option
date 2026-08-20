@@ -13,7 +13,7 @@ import time
 # 1. PAGE CONFIG & RESPONSIVE DARK THEME + THICK WHITE SCROLLBAR
 # -------------------------------------------------------------
 st.set_page_config(
-    page_title="Quant OptionScalp & Institutional Live Desk",
+    page_title="SHK TRADE LABS",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -44,24 +44,52 @@ st.markdown("""
         scrollbar-color: #ffffff #11161f !important;
     }
 
-    /* Top Dedicated ATM Hero Bar */
-    .atm-hero-bar {
-        background: linear-gradient(90deg, #161b22 0%, #1f2937 100%);
+    /* Clean 2-Row Top Price Card */
+    .top-price-box {
+        background: linear-gradient(90deg, #161b22 0%, #1a2230 100%);
         border: 1px solid #30363d;
         border-radius: 8px;
-        padding: 10px 14px;
-        margin-bottom: 10px;
+        padding: 12px 16px;
+        margin-bottom: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .top-price-row {
         display: flex;
         flex-direction: row;
-        justify-content: space-between;
         align-items: center;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 16px;
     }
-    .atm-title { font-size: 15px; font-weight: 800; color: #58a6ff; }
-    .atm-badge-spot { background-color: #21262d; color: #e6edf3; padding: 4px 8px; border-radius: 5px; font-weight: 700; font-size: 13px; border: 1px solid #30363d; }
-    .atm-badge-call { background-color: #006622; color: #ffffff; padding: 4px 8px; border-radius: 5px; font-weight: 700; font-size: 13px; }
-    .atm-badge-put { background-color: #8b0000; color: #ffffff; padding: 4px 8px; border-radius: 5px; font-weight: 700; font-size: 13px; }
+    .val-badge-neutral {
+        background-color: #21262d;
+        color: #e6edf3;
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-weight: 800;
+        font-size: 15px;
+        border: 1px solid #30363d;
+        letter-spacing: 0.5px;
+    }
+    .val-badge-call {
+        background-color: #006622;
+        color: #ffffff;
+        padding: 6px 16px;
+        border-radius: 6px;
+        font-weight: 800;
+        font-size: 15px;
+        letter-spacing: 0.5px;
+    }
+    .val-badge-put {
+        background-color: #8b0000;
+        color: #ffffff;
+        padding: 6px 16px;
+        border-radius: 6px;
+        font-weight: 800;
+        font-size: 15px;
+        letter-spacing: 0.5px;
+    }
     
     /* Institutional OI Metric Bar */
     .oi-summary-card {
@@ -80,32 +108,10 @@ st.markdown("""
     .oi-call-val { color: #ff5252; font-weight: 800; }
     .oi-put-val { color: #00e676; font-weight: 800; }
     .pcr-badge { background-color: #1f2937; padding: 4px 10px; border-radius: 5px; border: 1px solid #374151; font-weight: 800; color: #38bdf8; }
-
-    /* Persistent Active Call Badge */
-    .alert-call-box {
-        background: linear-gradient(90deg, #0d1117 0%, #161b22 100%);
-        border-radius: 8px;
-        padding: 10px 14px;
-        margin-bottom: 10px;
-        font-size: 14px;
-        font-weight: bold;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 6px;
-    }
-    .call-active-ce { border: 2px solid #00ff7f; color: #00ff7f; }
-    .call-active-pe { border: 2px solid #ff4d4d; color: #ff4d4d; }
-    .call-active-neutral { border: 1px dashed #8b949e; color: #8b949e; }
     
     /* Metrics Row */
     .metric-grid { display: flex; flex-direction: row; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
     .metric-card { flex: 1; min-width: 95px; padding: 7px 4px; border-radius: 6px; text-align: center; font-size: 12px; font-weight: bold; }
-    
-    /* Trade Setup Cards */
-    .trade-card { background-color: #161b22; border-left: 4px solid #00ff7f; padding: 10px; border-radius: 6px; margin-bottom: 12px; }
-    .trade-card-bearish { background-color: #161b22; border-left: 4px solid #ff4d4d; padding: 10px; border-radius: 6px; margin-bottom: 12px; }
     
     .status-bullish { background-color: #006622; color: #ffffff; }
     .status-bearish { background-color: #8b0000; color: #ffffff; }
@@ -211,57 +217,7 @@ def is_market_open():
     return True, "🟢 Live Market Active"
 
 # -------------------------------------------------------------
-# 3. AUDIO SYNTHESIZER
-# -------------------------------------------------------------
-def play_audio_alert(alert_type):
-    if alert_type == "CALL":
-        js_code = """
-        <script>
-        (function() {
-            var ctx = new (window.AudioContext || window.webkitAudioContext)();
-            var osc = ctx.createOscillator();
-            var gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(880, ctx.currentTime);
-            gain.gain.setValueAtTime(0.3, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
-            osc.start();
-            osc.stop(ctx.currentTime + 0.4);
-        })();
-        </script>
-        """
-    elif alert_type == "PUT":
-        js_code = """
-        <script>
-        (function() {
-            var ctx = new (window.AudioContext || window.webkitAudioContext)();
-            function beep(delay, freq) {
-                var osc = ctx.createOscillator();
-                var gain = ctx.createGain();
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
-                gain.gain.setValueAtTime(0.3, ctx.currentTime + delay);
-                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + 0.2);
-                osc.start(ctx.currentTime + delay);
-                osc.stop(ctx.currentTime + delay + 0.2);
-            }
-            beep(0.0, 550);
-            beep(0.25, 440);
-        })();
-        </script>
-        """
-    else:
-        js_code = ""
-    
-    if js_code:
-        st.components.v1.html(js_code, height=0, width=0)
-
-# -------------------------------------------------------------
-# 4. DIRECT REST API SESSION ENGINE
+# 3. DIRECT REST API SESSION ENGINE
 # -------------------------------------------------------------
 class AngelDirectClient:
     def __init__(self, jwt_token, api_key):
@@ -352,7 +308,7 @@ else:
     auth_log = st.session_state.smart_api_log
 
 # -------------------------------------------------------------
-# 5. SCRIP MASTER & NIFTY 50 EQUITIES LOADER
+# 4. SCRIP MASTER & NIFTY 50 EQUITIES LOADER
 # -------------------------------------------------------------
 NIFTY_50_SYMBOLS = [
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR", "ITC", "SBIN",
@@ -386,7 +342,7 @@ def load_all_scrip_masters():
 scrip_df, nifty50_df = load_all_scrip_masters()
 
 # -------------------------------------------------------------
-# 6. DATA RETRIEVAL & MARKET SNAPSHOT
+# 5. DATA RETRIEVAL & MARKET SNAPSHOT
 # -------------------------------------------------------------
 def get_live_india_vix(_api):
     vix_val, vix_chg = 11.45, 0.06
@@ -472,7 +428,7 @@ def get_live_market_snapshot(_api, scrip_data):
     return nifty_spot, fut_price, atm_strike, expiry_str, call_ltp, put_ltp, ce_token, pe_token, ce_symbol, pe_symbol
 
 # -------------------------------------------------------------
-# 7. LIVE OI & ACCURATE 3-PHASE DELTA ENGINE
+# 6. LIVE OI & ACCURATE 3-PHASE DELTA ENGINE
 # -------------------------------------------------------------
 def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
@@ -586,7 +542,7 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     return strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, pcr_val, total_ce_oi, total_pe_oi, is_live
 
 # -------------------------------------------------------------
-# 8. NIFTY 50 MARKET BREADTH SCANNER
+# 7. NIFTY 50 MARKET BREADTH SCANNER
 # -------------------------------------------------------------
 def fetch_nifty_50_breadth(_api, n50_df):
     above_open = 18
@@ -635,19 +591,17 @@ def fetch_nifty_50_breadth(_api, n50_df):
     return above_open, below_open, open_sentiment, above_15m_high, below_15m_low
 
 # -------------------------------------------------------------
-# 9. LOCKED CHART GENERATION (Fixed Axes, No Zoom Disturbance)
+# 8. LOCKED CHART GENERATION (Fixed Axes)
 # -------------------------------------------------------------
 def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price):
     pe_x = [s - 9 for s in strikes]
     ce_x = [s + 9 for s in strikes]
 
     fig_oi = go.Figure()
-    # Put Bars with Black Cross-lines on buildup
     fig_oi.add_trace(go.Bar(name="Put Base OI", x=pe_x, y=pe_solid, marker_color="#22c55e", width=16))
     fig_oi.add_trace(go.Bar(name="Put Increase (Buildup)", x=pe_x, y=pe_crossed, marker_color="#22c55e", marker_pattern_shape="/", marker_pattern_fgcolor="black", width=16))
     fig_oi.add_trace(go.Bar(name="Put Decrease (Unwinding)", x=pe_x, y=pe_hollow, marker_color="rgba(0,0,0,0)", marker_line_color="#22c55e", marker_line_width=1.5, width=16))
 
-    # Call Bars with White Cross-lines on buildup
     fig_oi.add_trace(go.Bar(name="Call Base OI", x=ce_x, y=ce_solid, marker_color="#ef4444", width=16))
     fig_oi.add_trace(go.Bar(name="Call Increase (Buildup)", x=ce_x, y=ce_crossed, marker_color="#ef4444", marker_pattern_shape="/", marker_pattern_fgcolor="white", width=16))
     fig_oi.add_trace(go.Bar(name="Call Decrease (Unwinding)", x=ce_x, y=ce_hollow, marker_color="rgba(0,0,0,0)", marker_line_color="#ef4444", marker_line_width=1.5, width=16))
@@ -724,46 +678,26 @@ def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     return fig_scalp
 
 # -------------------------------------------------------------
-# 10. HEADER & DASHBOARD PLACEHOLDERS
+# 9. HEADER & DASHBOARD PLACEHOLDERS (STRICT USER HIERARCHY)
 # -------------------------------------------------------------
 nifty_spot, fut_price, atm_strike, expiry_str, call_ltp, put_ltp, ce_token, pe_token, ce_symbol, pe_symbol = get_live_market_snapshot(smart_api, scrip_df)
 strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, live_pcr, total_ce_oi, total_pe_oi, is_live = fetch_live_oi_and_power(smart_api, scrip_df, atm_strike)
 
-col_head, col_ctrl1, col_ctrl2 = st.columns([3, 1, 1.2])
-with col_head:
-    st.title("⚡ Quant OptionScalp & Institutional Live Desk")
-    conn_badge = "🟢 Angel One SmartAPI Feed (IST)" if smart_api else f"🟡 Feed Status: {auth_log}"
-    st.caption(f"Session Status: {conn_badge}")
+st.title("⚡ SHK TRADE LABS")
+conn_badge = "🟢 Angel One SmartAPI Feed (IST)" if smart_api else f"🟡 Feed Status: {auth_log}"
+st.caption(f"Session Status: {conn_badge}")
 
-with col_ctrl1:
-    sound_enabled = st.toggle("🔔 Sound Alerts", value=True)
-
-with col_ctrl2:
-    max_risk = st.number_input("Max Risk (₹)", min_value=500, max_value=50000, value=2000, step=500)
-
+# Exact Requested Hierarchy
 atm_header_box = st.empty()
-active_call_display_box = st.empty()
+breadth_box = st.empty()
+checkpoints_box = st.empty()
 metrics_box = st.empty()
-trade_box = st.empty()
 oi_summary_box = st.empty()
 oi_chart_box = st.empty()
 chart_box = st.empty()
 table_box = st.empty()
-checkpoints_box = st.empty()
-breadth_box = st.empty()
-audio_box = st.empty()
 
-# State persistence
-if "last_signal_time" not in st.session_state:
-    st.session_state.last_signal_time = 0
-if "current_live_call" not in st.session_state:
-    st.session_state.current_live_call = {
-        "type": "NO ACTIVE CALL",
-        "strike": "-",
-        "trigger_price": 0.0,
-        "time": "Waiting for Trigger..."
-    }
-
+# Live candle dynamic history buffer
 base_t = get_current_ist()
 if "live_candle_buffer" not in st.session_state:
     st.session_state.live_candle_buffer = {
@@ -791,7 +725,7 @@ if "last_breadth_update_ts" not in st.session_state:
     st.session_state.last_breadth_update_ts = 0.0
 
 # -------------------------------------------------------------
-# 11. INITIAL RENDERING
+# 10. INITIAL RENDERING
 # -------------------------------------------------------------
 live_vix, live_vix_chg = get_live_india_vix(smart_api)
 
@@ -820,7 +754,7 @@ def get_status_badge_html(status_text):
         return '<span class="badge-neutral-tag">NEUTRAL</span>'
 
 # -------------------------------------------------------------
-# 12. STREAMING LOOP
+# 11. STREAMING LOOP
 # -------------------------------------------------------------
 while True:
     loop_tick += 1
@@ -896,7 +830,7 @@ while True:
     straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2))
 
     # ---------------------------------------------------------
-    # 13. EVALUATE 7 CHECKPOINTS
+    # 12. EVALUATE 7 CHECKPOINTS
     # ---------------------------------------------------------
     cp1_val = f"CE Net: {cur_call_power:+,d} | PE Net: {cur_put_power:+,d}"
     cp1_status = "BULLISH" if cur_call_power > 0 and cur_put_power < 0 else ("BEARISH" if cur_put_power > 0 and cur_call_power < 0 else "NEUTRAL")
@@ -947,7 +881,7 @@ while True:
 
     if market_active:
         if atm_trend == multi_trend and atm_trend in ["BULLISH", "BEARISH"]:
-            market_status = "ACTIVE ENTRY"
+            market_status = "ACTIVE MOMENTUM"
             market_class = "status-bullish" if atm_trend == "BULLISH" else "status-bearish"
         else:
             market_status = "WAIT / MIXED"
@@ -956,151 +890,47 @@ while True:
         market_status = "MARKET CLOSED"
         market_class = "status-wait"
 
-    # Audio Alerts
-    fired_alert = None
-    if market_active and market_status == "ACTIVE ENTRY":
-        if atm_trend == "BULLISH":
-            st.session_state.current_live_call = {
-                "type": "BUY CE (CALL)",
-                "strike": f"NIFTY {atm_strike} CE",
-                "trigger_price": new_call,
-                "time": current_time_ist.strftime("%I:%M:%S %p")
-            }
-            if sound_enabled and (current_timestamp - st.session_state.last_signal_time) > 60:
-                fired_alert = "CALL"
-                st.session_state.last_signal_time = current_timestamp
-
-        elif atm_trend == "BEARISH":
-            st.session_state.current_live_call = {
-                "type": "BUY PE (PUT)",
-                "strike": f"NIFTY {atm_strike} PE",
-                "trigger_price": new_put,
-                "time": current_time_ist.strftime("%I:%M:%S %p")
-            }
-            if sound_enabled and (current_timestamp - st.session_state.last_signal_time) > 60:
-                fired_alert = "PUT"
-                st.session_state.last_signal_time = current_timestamp
-
-    if fired_alert:
-        with audio_box:
-            play_audio_alert(fired_alert)
-
     # ---------------------------------------------------------
-    # 14. FAST IN-PLACE DOM UPDATES
+    # 13. FAST IN-PLACE DOM UPDATES (NEW REQUESTED HIERARCHY)
     # ---------------------------------------------------------
+    # 1. Top Price Section (Nifty, Fut, ATM, Call, Put)
     atm_header_box.markdown(f"""
-    <div class="atm-hero-bar">
-        <div class="atm-title">🎯 ATM STRIKE: {atm_strike} ({expiry_str} EXPIRY)</div>
-        <div class="atm-badge-spot">NIFTY SPOT: {nifty_spot:.2f} | FUT: {fut_price:.2f}</div>
-        <div class="atm-badge-call">ATM CALL ({atm_strike} CE): ₹{new_call:.2f}</div>
-        <div class="atm-badge-put">ATM PUT ({atm_strike} PE): ₹{new_put:.2f}</div>
+    <div class="top-price-box">
+        <div class="top-price-row">
+            <span class="val-badge-neutral">NIFTY {nifty_spot:.2f}</span>
+            <span class="val-badge-neutral">FUT {fut_price:.2f}</span>
+            <span class="val-badge-neutral">ATM {atm_strike}</span>
+        </div>
+        <div class="top-price-row">
+            <span class="val-badge-call">CALL ₹{new_call:.2f}</span>
+            <span class="val-badge-put">PUT ₹{new_put:.2f}</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    active_call = st.session_state.current_live_call
-    call_style = "call-active-ce" if active_call["type"] == "BUY CE (CALL)" else ("call-active-pe" if active_call["type"] == "BUY PE (PUT)" else "call-active-neutral")
-    call_icon = "🟢" if active_call["type"] == "BUY CE (CALL)" else ("🔴" if active_call["type"] == "BUY PE (PUT)" else "⚪")
+    # 2. Nifty 50 Market Breadth Display
+    ab_op, bl_op, op_sent, ab_15, bl_15 = st.session_state.last_n50_breadth
+    breadth_html = (
+        '<div class="checkpoint-container">'
+        '<div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:12px;">🏛️ Nifty 50 Equities Breadth Engine (Live 10s Stream)</div>'
+        '<div class="breadth-flex-row">'
+        '<span class="breadth-label">Above Open:</span>'
+        f'<span class="badge-bullish-tag">{ab_op}</span>'
+        f'<span class="badge-bearish-tag">{bl_op}</span>'
+        '<span class="breadth-label">Below Open</span>'
+        f'<div style="margin-left: auto;">{get_status_badge_html(op_sent)}</div>'
+        '</div>'
+        '<div class="breadth-flex-row">'
+        '<span class="breadth-label">Above 15m High:</span>'
+        f'<span class="badge-bullish-tag">{ab_15}</span>'
+        f'<span class="badge-bearish-tag">{bl_15}</span>'
+        '<span class="breadth-label">Below 15m Low</span>'
+        '</div>'
+        '</div>'
+    )
+    breadth_box.markdown(breadth_html, unsafe_allow_html=True)
 
-    active_call_display_box.markdown(f"""
-    <div class="alert-call-box {call_style}">
-        <div>{call_icon} <b>ACTIVE SIGNAL:</b> <span style="font-size:15px;">{active_call['type']}</span> &nbsp; [{active_call['strike']}]</div>
-        <div><b>Trigger Level:</b> ₹{active_call['trigger_price']:.2f} &nbsp;|&nbsp; <b>Time (IST):</b> {active_call['time']}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    metrics_box.markdown(f"""
-    <div class="metric-grid">
-        <div class="metric-card status-bearish">PUT POC: ₹{put_poc:.2f}</div>
-        <div class="metric-card status-bullish">CALL POC: ₹{call_poc:.2f}</div>
-        <div class="metric-card status-wait">TLOC: ₹{straddle_tloc:.2f}</div>
-        <div class="metric-card {atm_class}">ATM: {atm_trend}</div>
-        <div class="metric-card {multi_class}">MULTI: {multi_trend}</div>
-        <div class="metric-card {market_class}">MARKET: {market_status}</div>
-        <div class="metric-card status-info">{unwinding_status}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if not market_active:
-        trade_box.markdown(f"""
-        <div style="background-color:#161b22; border-left: 4px solid #996600; padding:10px; border-radius:6px; margin-bottom:12px; font-size:13px;">
-            ⏸️ <b>FINAL CLOSING SNAPSHOT:</b> {market_msg}. Live streaming resumes at 09:15 AM IST.
-        </div>
-        """, unsafe_allow_html=True)
-    elif market_status == "ACTIVE ENTRY" and atm_trend == "BEARISH":
-        stop_loss = max(1.0, float(np.round(put_poc - 4.0, 2)))
-        risk_per_share = max(2.0, float(np.round(new_put - stop_loss, 2)))
-        recommended_qty = max(75, int((max_risk / risk_per_share) // 75) * 75)
-        target_pts = float(np.round(new_put + (risk_per_share * 2), 2))
-        
-        trade_box.markdown(f"""
-        <div class="trade-card-bearish">
-            <b>🔴 HIGH-CONVICTION SETUP: BUY ATM NIFTY {atm_strike} PE</b><br>
-            • <b>Entry:</b> ₹{new_put:.2f} (Above POC ₹{put_poc:.2f}) | 
-            • <b>Hard SL:</b> ₹{stop_loss:.2f} (Risk: ₹{risk_per_share:.2f}/pt) | 
-            • <b>Target (1:2 R:R):</b> ₹{target_pts:.2f} | 
-            • <b>Position Size:</b> {recommended_qty} Qty ({recommended_qty//75} Lots) for ₹{max_risk} Max Risk
-        </div>
-        """, unsafe_allow_html=True)
-    elif market_status == "ACTIVE ENTRY" and atm_trend == "BULLISH":
-        stop_loss = max(1.0, float(np.round(call_poc - 4.0, 2)))
-        risk_per_share = max(2.0, float(np.round(new_call - stop_loss, 2)))
-        recommended_qty = max(75, int((max_risk / risk_per_share) // 75) * 75)
-        target_pts = float(np.round(new_call + (risk_per_share * 2), 2))
-        
-        trade_box.markdown(f"""
-        <div class="trade-card">
-            <b>🟢 HIGH-CONVICTION SETUP: BUY ATM NIFTY {atm_strike} CE</b><br>
-            • <b>Entry:</b> ₹{new_call:.2f} (Above POC ₹{call_poc:.2f}) | 
-            • <b>Hard SL:</b> ₹{stop_loss:.2f} (Risk: ₹{risk_per_share:.2f}/pt) | 
-            • <b>Target (1:2 R:R):</b> ₹{target_pts:.2f} | 
-            • <b>Position Size:</b> {recommended_qty} Qty ({recommended_qty//75} Lots) for ₹{max_risk} Max Risk
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        trade_box.markdown("""
-        <div style="background-color:#161b22; padding:8px; border-radius:6px; margin-bottom:10px; text-align:center; color:#8b949e; font-size:13px;">
-            ⏳ <b>MARKET IN CONFLICT / TRAP ZONE:</b> Standing aside. Waiting for ATM & Multi-Strike Trend to align.
-        </div>
-        """, unsafe_allow_html=True)
-
-    vix_badge_color = "#00ff7f" if live_vix_chg >= 0 else "#ff4d4d"
-    ce_chg_display = f"{total_ce_oi/100000:+.2f}L"
-    pe_chg_display = f"{total_pe_oi/100000:+.2f}L"
-
-    oi_summary_box.markdown(f"""
-    <div class="oi-summary-card">
-        <div class="oi-item">INDIAVIX: <span style="color:{vix_badge_color};">{live_vix:.2f} ({live_vix_chg:+.2f})</span></div>
-        <div class="oi-item">PCR: <span class="pcr-badge">{live_pcr:.2f}</span></div>
-        <div class="oi-item">Call Total OI: <span class="oi-call-val">{ce_chg_display}</span></div>
-        <div class="oi-item">Put Total OI: <span class="oi-put-val">{pe_chg_display}</span></div>
-        <div class="oi-item">NIFTY Spot: <b>{nifty_spot:.2f}</b></div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # ---------------------------------------------------------
-    # 15. LIVE POWER MATRIX TABLE
-    # ---------------------------------------------------------
-    live_time_label = f"🔴 LIVE ({current_time_ist.strftime('%I:%M:%S %p')})" if market_active else f"⏸️ CLOSED ({current_time_ist.strftime('%I:%M:%S %p')})"
-    table_rows = [{
-        "Time (IST)": live_time_label,
-        "Call Power (CE Contracts)": f"{cur_call_power:+,d}",
-        "Put Power (PE Contracts)": f"{cur_put_power:+,d}",
-        "Market Sentiment": sentiment_tag
-    }]
-
-    for hist in reversed(st.session_state.matrix_history):
-        table_rows.append({
-            "Time (IST)": hist["Time"],
-            "Call Power (CE Contracts)": f"{hist['Call Power']:+,d}",
-            "Put Power (PE Contracts)": f"{hist['Put Power']:+,d}",
-            "Market Sentiment": hist["Sentiment"]
-        })
-
-    table_box.table(pd.DataFrame(table_rows))
-
-    # ---------------------------------------------------------
-    # 16. 7 QUANT CHECKPOINTS (Values + Badges)
-    # ---------------------------------------------------------
+    # 3. 7 Quant Institutional Edge Checkpoints
     checkpoints_box.markdown(f"""
     <div class="checkpoint-container">
         <div style="font-size:15px; font-weight:800; color:#58a6ff; margin-bottom:8px;">🎯 7 Institutional Edge Checkpoints</div>
@@ -1135,30 +965,52 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # ---------------------------------------------------------
-    # 17. NIFTY 50 EQUITIES BREADTH DISPLAY (Single-line HTML, No Raw Code)
-    # ---------------------------------------------------------
-    ab_op, bl_op, op_sent, ab_15, bl_15 = st.session_state.last_n50_breadth
+    # 4. Metrics Grid
+    metrics_box.markdown(f"""
+    <div class="metric-grid">
+        <div class="metric-card status-bearish">PUT POC: ₹{put_poc:.2f}</div>
+        <div class="metric-card status-bullish">CALL POC: ₹{call_poc:.2f}</div>
+        <div class="metric-card status-wait">TLOC: ₹{straddle_tloc:.2f}</div>
+        <div class="metric-card {atm_class}">ATM: {atm_trend}</div>
+        <div class="metric-card {multi_class}">MULTI: {multi_trend}</div>
+        <div class="metric-card {market_class}">MARKET: {market_status}</div>
+        <div class="metric-card status-info">{unwinding_status}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    breadth_html = (
-        '<div class="checkpoint-container">'
-        '<div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:12px;">🏛️ Nifty 50 Equities Breadth Engine (Live 10s Stream)</div>'
-        '<div class="breadth-flex-row">'
-        '<span class="breadth-label">Above Open:</span>'
-        f'<span class="badge-bullish-tag">{ab_op}</span>'
-        f'<span class="badge-bearish-tag">{bl_op}</span>'
-        '<span class="breadth-label">Below Open</span>'
-        f'<div style="margin-left: auto;">{get_status_badge_html(op_sent)}</div>'
-        '</div>'
-        '<div class="breadth-flex-row">'
-        '<span class="breadth-label">Above 15m High:</span>'
-        f'<span class="badge-bullish-tag">{ab_15}</span>'
-        f'<span class="badge-bearish-tag">{bl_15}</span>'
-        '<span class="breadth-label">Below 15m Low</span>'
-        '</div>'
-        '</div>'
-    )
-    breadth_box.markdown(breadth_html, unsafe_allow_html=True)
+    # 5. Institutional OI Metric Bar
+    vix_badge_color = "#00ff7f" if live_vix_chg >= 0 else "#ff4d4d"
+    ce_chg_display = f"{total_ce_oi/100000:+.2f}L"
+    pe_chg_display = f"{total_pe_oi/100000:+.2f}L"
+
+    oi_summary_box.markdown(f"""
+    <div class="oi-summary-card">
+        <div class="oi-item">INDIAVIX: <span style="color:{vix_badge_color};">{live_vix:.2f} ({live_vix_chg:+.2f})</span></div>
+        <div class="oi-item">PCR: <span class="pcr-badge">{live_pcr:.2f}</span></div>
+        <div class="oi-item">Call Total OI: <span class="oi-call-val">{ce_chg_display}</span></div>
+        <div class="oi-item">Put Total OI: <span class="oi-put-val">{pe_chg_display}</span></div>
+        <div class="oi-item">NIFTY Spot: <b>{nifty_spot:.2f}</b></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 6. Live Power Matrix Table
+    live_time_label = f"🔴 LIVE ({current_time_ist.strftime('%I:%M:%S %p')})" if market_active else f"⏸️ CLOSED ({current_time_ist.strftime('%I:%M:%S %p')})"
+    table_rows = [{
+        "Time (IST)": live_time_label,
+        "Call Power (CE Contracts)": f"{cur_call_power:+,d}",
+        "Put Power (PE Contracts)": f"{cur_put_power:+,d}",
+        "Market Sentiment": sentiment_tag
+    }]
+
+    for hist in reversed(st.session_state.matrix_history):
+        table_rows.append({
+            "Time (IST)": hist["Time"],
+            "Call Power (CE Contracts)": f"{hist['Call Power']:+,d}",
+            "Put Power (PE Contracts)": f"{hist['Put Power']:+,d}",
+            "Market Sentiment": hist["Sentiment"]
+        })
+
+    table_box.table(pd.DataFrame(table_rows))
 
     if not market_active:
         st.stop()
