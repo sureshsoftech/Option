@@ -10,7 +10,7 @@ import json
 import time
 
 # -------------------------------------------------------------
-# 1. PAGE CONFIG & RESPONSIVE DARK THEME
+# 1. PAGE CONFIG & RESPONSIVE DARK THEME + THICK WHITE SCROLLBAR
 # -------------------------------------------------------------
 st.set_page_config(
     page_title="Quant OptionScalp & Institutional Live Desk",
@@ -21,7 +21,29 @@ st.set_page_config(
 st.markdown("""
 <style>
     .stApp { background-color: #0b0e14; color: #ffffff; }
-    
+
+    /* --- High-Visibility Thick White Scrollbar --- */
+    ::-webkit-scrollbar {
+        width: 14px !important;
+        height: 14px !important;
+    }
+    ::-webkit-scrollbar-track {
+        background: #11161f !important;
+        border-left: 1px solid #30363d;
+    }
+    ::-webkit-scrollbar-thumb {
+        background-color: #ffffff !important;
+        border-radius: 7px !important;
+        border: 2px solid #11161f !important;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: #e2e8f0 !important;
+    }
+    html, body, [data-testid="stAppViewContainer"] {
+        scrollbar-width: auto !important;
+        scrollbar-color: #ffffff #11161f !important;
+    }
+
     /* Top Dedicated ATM Hero Bar */
     .atm-hero-bar {
         background: linear-gradient(90deg, #161b22 0%, #1f2937 100%);
@@ -502,7 +524,6 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
                         oi = int(itm.get("opnInterest", itm.get("openInterest", 0)))
                         ce_oi_dict[s_val] = oi
                         
-                        # Live Change in OI calculation
                         prev_oi = int(itm.get("prevOpenInterest", itm.get("prevOpnInterest", int(oi * 0.92))))
                         ce_chg_dict[s_val] = oi - prev_oi
 
@@ -614,19 +635,21 @@ def fetch_nifty_50_breadth(_api, n50_df):
     return above_open, below_open, open_sentiment, above_15m_high, below_15m_low
 
 # -------------------------------------------------------------
-# 9. 3-PHASE SENSIBULL OPEN INTEREST CHART
+# 9. LOCKED CHART GENERATION (Fixed Axes, No Zoom Disturbance)
 # -------------------------------------------------------------
 def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price):
     pe_x = [s - 9 for s in strikes]
     ce_x = [s + 9 for s in strikes]
 
     fig_oi = go.Figure()
+    # Put Bars with Black Cross-lines on buildup
     fig_oi.add_trace(go.Bar(name="Put Base OI", x=pe_x, y=pe_solid, marker_color="#22c55e", width=16))
-    fig_oi.add_trace(go.Bar(name="Put Increase (Buildup)", x=pe_x, y=pe_crossed, marker_color="#22c55e", marker_pattern_shape="/", width=16))
+    fig_oi.add_trace(go.Bar(name="Put Increase (Buildup)", x=pe_x, y=pe_crossed, marker_color="#22c55e", marker_pattern_shape="/", marker_pattern_fgcolor="black", width=16))
     fig_oi.add_trace(go.Bar(name="Put Decrease (Unwinding)", x=pe_x, y=pe_hollow, marker_color="rgba(0,0,0,0)", marker_line_color="#22c55e", marker_line_width=1.5, width=16))
 
+    # Call Bars with White Cross-lines on buildup
     fig_oi.add_trace(go.Bar(name="Call Base OI", x=ce_x, y=ce_solid, marker_color="#ef4444", width=16))
-    fig_oi.add_trace(go.Bar(name="Call Increase (Buildup)", x=ce_x, y=ce_crossed, marker_color="#ef4444", marker_pattern_shape="/", width=16))
+    fig_oi.add_trace(go.Bar(name="Call Increase (Buildup)", x=ce_x, y=ce_crossed, marker_color="#ef4444", marker_pattern_shape="/", marker_pattern_fgcolor="white", width=16))
     fig_oi.add_trace(go.Bar(name="Call Decrease (Unwinding)", x=ce_x, y=ce_hollow, marker_color="rgba(0,0,0,0)", marker_line_color="#ef4444", marker_line_width=1.5, width=16))
 
     fig_oi.update_layout(
@@ -636,8 +659,8 @@ def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_cross
         barmode="stack",
         margin=dict(l=10, r=10, t=65, b=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
-        yaxis=dict(title="Contracts (OI)", tickvals=[0, 2000000, 4000000, 6000000, 8000000, 10000000, 12000000, 14000000, 16000000], ticktext=["0", "20L", "40L", "60L", "80L", "1Cr", "1.2Cr", "1.4Cr", "1.6Cr"], gridcolor="#1f2937"),
-        xaxis=dict(title="Strike Prices", tickmode="array", tickvals=strikes, ticktext=[str(s) for s in strikes], tickangle=-45, range=[strikes[0] - 35, strikes[-1] + 35], gridcolor="#1f2937"),
+        yaxis=dict(title="Contracts (OI)", tickvals=[0, 2000000, 4000000, 6000000, 8000000, 10000000, 12000000, 14000000, 16000000], ticktext=["0", "20L", "40L", "60L", "80L", "1Cr", "1.2Cr", "1.4Cr", "1.6Cr"], gridcolor="#1f2937", fixedrange=True),
+        xaxis=dict(title="Strike Prices", tickmode="array", tickvals=strikes, ticktext=[str(s) for s in strikes], tickangle=-45, range=[strikes[0] - 35, strikes[-1] + 35], gridcolor="#1f2937", fixedrange=True),
         shapes=[dict(type="line", x0=fut_price, x1=fut_price, y0=0, y1=1, yref="paper", line=dict(color="#94a3b8", width=1.5, dash="dash"))],
         annotations=[dict(x=fut_price, y=1, yref="paper", text=f"NIFTY {fut_price:.2f}", showarrow=False, font=dict(color="#94a3b8", size=11), yshift=10)]
     )
@@ -684,10 +707,20 @@ def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     fig_scalp.add_trace(go.Bar(x=times_str, y=delta_force, marker_color=bar_colors, name="SMI Delta"), row=3, col=1)
     fig_scalp.add_trace(go.Scatter(x=times_str, y=cvd_line / 10, name="CVD Divergence", line=dict(color="#00e5ff", width=1.5)), row=3, col=1)
 
-    fig_scalp.update_layout(height=640, template="plotly_dark", margin=dict(l=8, r=8, t=26, b=8), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-    fig_scalp.update_xaxes(showticklabels=False, row=1, col=1)
-    fig_scalp.update_xaxes(showticklabels=False, row=2, col=1)
-    fig_scalp.update_xaxes(showticklabels=True, tickangle=0, nticks=5, row=3, col=1)
+    min_p1 = min(min(put_prices), min(call_prices), call_poc, put_poc) - 5
+    max_p1 = max(max(put_prices), max(call_prices), call_poc, put_poc) + 5
+
+    fig_scalp.update_layout(
+        height=640, template="plotly_dark", margin=dict(l=8, r=8, t=26, b=8),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True),
+        xaxis2=dict(fixedrange=True), yaxis2=dict(fixedrange=True),
+        xaxis3=dict(fixedrange=True), yaxis3=dict(fixedrange=True)
+    )
+    fig_scalp.update_yaxes(range=[min_p1, max_p1], row=1, col=1, fixedrange=True)
+    fig_scalp.update_xaxes(showticklabels=False, row=1, col=1, fixedrange=True)
+    fig_scalp.update_xaxes(showticklabels=False, row=2, col=1, fixedrange=True)
+    fig_scalp.update_xaxes(showticklabels=True, tickangle=0, nticks=5, row=3, col=1, fixedrange=True)
     return fig_scalp
 
 # -------------------------------------------------------------
@@ -731,7 +764,6 @@ if "current_live_call" not in st.session_state:
         "time": "Waiting for Trigger..."
     }
 
-# Live candle dynamic history buffer
 base_t = get_current_ist()
 if "live_candle_buffer" not in st.session_state:
     st.session_state.live_candle_buffer = {
@@ -764,7 +796,7 @@ if "last_breadth_update_ts" not in st.session_state:
 live_vix, live_vix_chg = get_live_india_vix(smart_api)
 
 initial_fig_oi = render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price)
-oi_chart_box.plotly_chart(initial_fig_oi, key="init_oi_chart", config={"displayModeBar": False})
+oi_chart_box.plotly_chart(initial_fig_oi, key="init_oi_chart", config={"displayModeBar": False, "staticPlot": False})
 
 times_dt = st.session_state.live_candle_buffer["times"]
 put_prices = st.session_state.live_candle_buffer["puts"]
@@ -772,7 +804,7 @@ call_prices = st.session_state.live_candle_buffer["calls"]
 volumes = st.session_state.live_candle_buffer["vols"]
 
 initial_fig_scalp = render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike)
-chart_box.plotly_chart(initial_fig_scalp, key="init_scalp_chart", config={"displayModeBar": False})
+chart_box.plotly_chart(initial_fig_scalp, key="init_scalp_chart", config={"displayModeBar": False, "staticPlot": False})
 
 cur_call_power = live_cp
 cur_put_power = live_pp
@@ -800,7 +832,6 @@ while True:
     live_vix, live_vix_chg = get_live_india_vix(smart_api)
 
     if market_active:
-        # Update current tick in the live stream buffer
         st.session_state.live_candle_buffer["calls"][-1] = new_call
         st.session_state.live_candle_buffer["puts"][-1] = new_put
 
@@ -825,7 +856,6 @@ while True:
             if len(st.session_state.matrix_history) > 4:
                 st.session_state.matrix_history.pop(0)
 
-            # Append new minute to buffer
             st.session_state.live_candle_buffer["times"].append(current_time_ist)
             st.session_state.live_candle_buffer["calls"].append(new_call)
             st.session_state.live_candle_buffer["puts"].append(new_put)
@@ -840,7 +870,7 @@ while True:
             st.session_state.last_minute_recorded = current_time_ist.minute
 
             updated_fig_oi = render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price)
-            oi_chart_box.plotly_chart(updated_fig_oi, key=f"oi_plot_{loop_tick}", config={"displayModeBar": False})
+            oi_chart_box.plotly_chart(updated_fig_oi, key=f"oi_plot_{loop_tick}", config={"displayModeBar": False, "staticPlot": False})
 
             times_dt = st.session_state.live_candle_buffer["times"]
             put_prices = st.session_state.live_candle_buffer["puts"]
@@ -848,7 +878,7 @@ while True:
             volumes = st.session_state.live_candle_buffer["vols"]
 
             updated_fig_scalp = render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike)
-            chart_box.plotly_chart(updated_fig_scalp, key=f"scalp_plot_{loop_tick}", config={"displayModeBar": False})
+            chart_box.plotly_chart(updated_fig_scalp, key=f"scalp_plot_{loop_tick}", config={"displayModeBar": False, "staticPlot": False})
     else:
         cur_call_power = live_cp
         cur_put_power = live_pp
@@ -1106,7 +1136,7 @@ while True:
     """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 17. NIFTY 50 EQUITIES BREADTH DISPLAY (Exact Format & Order)
+    # 17. NIFTY 50 EQUITIES BREADTH DISPLAY (Single-line HTML, No Raw Code)
     # ---------------------------------------------------------
     ab_op, bl_op, op_sent, ab_15, bl_15 = st.session_state.last_n50_breadth
 
