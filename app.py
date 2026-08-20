@@ -90,7 +90,7 @@ st.markdown("""
     .status-wait { background-color: #996600; color: #ffffff; }
     .status-info { background-color: #1f3a60; color: #ffffff; }
 
-    /* Checkpoint & Breadth Card Design */
+    /* Checkpoint Card Design */
     .checkpoint-container {
         background: #11161f;
         border: 1px solid #21262d;
@@ -149,7 +149,6 @@ st.markdown("""
         font-size: 12px;
     }
 
-    /* Structured Nifty 50 Breadth Boxes */
     .breadth-flex-row {
         display: flex;
         flex-direction: row;
@@ -520,7 +519,6 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
             if parsed_expiries:
                 nearest_expiry = parsed_expiries[0][1]
 
-                # 5 ATM strikes for fast and accurate order depth parsing
                 atm_strikes_near = [int(atm_strike + (i * 50)) for i in range(-2, 3)]
                 target_ce = scrip_data[(scrip_data["expiry"] == nearest_expiry) & 
                                         (scrip_data["strike"].isin(atm_strikes_near)) & 
@@ -531,7 +529,6 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
 
                 tokens_to_fetch = [str(x) for x in list(target_ce["token"].values) + list(target_pe["token"].values)]
                 
-                # Fetch 10-token payload
                 res = _api.getMarketData("FULL", {"NFO": tokens_to_fetch})
                 if res and res.get("status") and "fetched" in res.get("data", {}):
                     fetched_items = {str(item["token"]): item for item in res["data"]["fetched"] if "token" in item}
@@ -612,8 +609,8 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
 def fetch_nifty_50_breadth(_api, n50_df):
     above_open = 18
     below_open = 32
-    above_15m_high = 10
-    below_15m_low = 12
+    above_15m_high = 6
+    below_15m_low = 18
 
     if _api and n50_df is not None and not n50_df.empty:
         try:
@@ -875,7 +872,7 @@ while True:
     straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2))
 
     # ---------------------------------------------------------
-    # 13. EVALUATE 7 CHECKPOINTS WITH METRIC VALUES
+    # 13. EVALUATE 7 CHECKPOINTS WITH REAL VALUES
     # ---------------------------------------------------------
     cp1_val = f"CE Net: {cur_call_power:+,d} | PE Net: {cur_put_power:+,d}"
     cp1_status = "BULLISH" if cur_call_power > 0 and cur_put_power < 0 else ("BEARISH" if cur_put_power > 0 and cur_call_power < 0 else "NEUTRAL")
@@ -1115,32 +1112,29 @@ while True:
     """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 17. NIFTY 50 EQUITIES BREADTH DISPLAY (Exact Format & Order)
+    # 17. NIFTY 50 EQUITIES BREADTH DISPLAY (Single-line HTML, No Raw Code)
     # ---------------------------------------------------------
     ab_op, bl_op, op_sent, ab_15, bl_15 = st.session_state.last_n50_breadth
 
-    breadth_box.markdown(f"""
-    <div class="checkpoint-container">
-        <div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:12px;">🏛️ Nifty 50 Equities Breadth Engine (Live 10s Stream)</div>
-        
-        <div class="breadth-flex-row">
-            <span class="breadth-label">Above Open:</span>
-            <span class="badge-bullish-tag">{ab_op}</span>
-            <span class="badge-bearish-tag">{bl_op}</span>
-            <span class="breadth-label">Below Open</span>
-            <div style="margin-left: auto;">
-                {get_status_badge_html(op_sent)}
-            </div>
-        </div>
-        
-        <div class="breadth-flex-row">
-            <span class="breadth-label">Above 15m High:</span>
-            <span class="badge-bullish-tag">{ab_15}</span>
-            <span class="badge-bearish-tag">{bl_15}</span>
-            <span class="breadth-label">Below 15m Low</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    breadth_html = (
+        '<div class="checkpoint-container">'
+        '<div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:12px;">🏛️ Nifty 50 Equities Breadth Engine (Live 10s Stream)</div>'
+        '<div class="breadth-flex-row">'
+        '<span class="breadth-label">Above Open:</span>'
+        f'<span class="badge-bullish-tag">{ab_op}</span>'
+        f'<span class="badge-bearish-tag">{bl_op}</span>'
+        '<span class="breadth-label">Below Open</span>'
+        f'<div style="margin-left: auto;">{get_status_badge_html(op_sent)}</div>'
+        '</div>'
+        '<div class="breadth-flex-row">'
+        '<span class="breadth-label">Above 15m High:</span>'
+        f'<span class="badge-bullish-tag">{ab_15}</span>'
+        f'<span class="badge-bearish-tag">{bl_15}</span>'
+        '<span class="breadth-label">Below 15m Low</span>'
+        '</div>'
+        '</div>'
+    )
+    breadth_box.markdown(breadth_html, unsafe_allow_html=True)
 
     if not market_active:
         st.stop()
