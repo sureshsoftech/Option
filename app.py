@@ -486,11 +486,11 @@ def fetch_live_candle_history(_api, ce_token, pe_token):
     return times_list, call_p, put_p, vols
 
 # -------------------------------------------------------------
-# 7. STRICT LIVE OI & REAL ORDER FLOW ENGINE (Zero Mock/Fallbacks)
+# 7. STRICT LIVE OI & REAL ORDER FLOW ENGINE
 # -------------------------------------------------------------
 def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     if atm_strike == 0 or not _api or scrip_data is None or scrip_data.empty:
-        return [], [], [], [], 0, 0, 0.0, 0, 0, False
+        return [], [], [], 0, 0, 0.0, 0, 0, False
 
     strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
     pe_oi_dict = {s: 0 for s in strikes}
@@ -521,7 +521,6 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
             all_tokens = [str(x) for x in list(target_ce["token"].values) + list(target_pe["token"].values)]
             fetched_items = {}
 
-            # Execute batch requests in 10-token chunks
             for chunk_i in range(0, len(all_tokens), 10):
                 sub_toks = all_tokens[chunk_i:chunk_i+10]
                 res = _api.getMarketData("FULL", {"NFO": sub_toks})
@@ -646,7 +645,7 @@ def render_oi_chart(strikes, pe_solid, ce_solid, fut_price):
     return fig_oi
 
 def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
-    if len(call_p := call_prices) < 2 or sum(volumes) == 0:
+    if len(call_prices) < 2 or sum(volumes) == 0:
         return None
 
     times_str = [t.strftime("%I:%M %p") for t in times_dt]
@@ -764,13 +763,13 @@ initial_fig_oi = render_oi_chart(strikes, pe_solid, ce_solid, fut_price)
 if initial_fig_oi:
     oi_chart_box.plotly_chart(initial_fig_oi, key="init_oi_chart", config={"displayModeBar": False})
 else:
-    oi_chart_box.info("⚠️ Live Open Interest data is currently loading from exchange...")
+    oi_chart_box.info("⚠️ Live Open Interest data is loading from exchange...")
 
 initial_fig_scalp = render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike)
 if initial_fig_scalp:
     chart_box.plotly_chart(initial_fig_scalp, key="init_scalp_chart", config={"displayModeBar": False})
 else:
-    chart_box.info("⚠️ Live Straddle/Micro-Price Candles are loading from exchange...")
+    chart_box.info("⚠️ Live Straddle / Candle History is loading from exchange...")
 
 cur_call_power = live_cp
 cur_put_power = live_pp
@@ -1093,7 +1092,7 @@ while True:
     """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 17. NIFTY 50 EQUITIES BREADTH DISPLAY (Single-line HTML, No Raw Code)
+    # 17. NIFTY 50 EQUITIES BREADTH DISPLAY
     # ---------------------------------------------------------
     ab_op, bl_op, op_sent, ab_15, bl_15 = st.session_state.last_n50_breadth
 
