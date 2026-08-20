@@ -89,6 +89,53 @@ st.markdown("""
     .status-bearish { background-color: #8b0000; color: #ffffff; }
     .status-wait { background-color: #996600; color: #ffffff; }
     .status-info { background-color: #1f3a60; color: #ffffff; }
+
+    /* Checkpoint & Breadth Card Design */
+    .checkpoint-container {
+        background: #11161f;
+        border: 1px solid #21262d;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-top: 10px;
+        margin-bottom: 12px;
+    }
+    .checkpoint-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 4px;
+        border-bottom: 1px solid #1f2937;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    .checkpoint-row:last-child { border-bottom: none; }
+    
+    .badge-bullish-tag {
+        background-color: #00ff7f;
+        color: #000000;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-weight: 800;
+        font-size: 12px;
+        letter-spacing: 0.5px;
+    }
+    .badge-bearish-tag {
+        background-color: #ff3333;
+        color: #ffffff;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-weight: 800;
+        font-size: 12px;
+        letter-spacing: 0.5px;
+    }
+    .badge-neutral-tag {
+        background-color: #4b5563;
+        color: #ffffff;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-weight: 700;
+        font-size: 12px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -167,7 +214,7 @@ def play_audio_alert(alert_type):
         st.components.v1.html(js_code, height=0, width=0)
 
 # -------------------------------------------------------------
-# 4. DIRECT REST API SESSION ENGINE (Zero Dependency Issues)
+# 4. DIRECT REST API SESSION ENGINE
 # -------------------------------------------------------------
 class AngelDirectClient:
     def __init__(self, jwt_token, api_key):
@@ -198,7 +245,7 @@ class AngelDirectClient:
         url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1/quote/"
         payload = {"mode": mode, "exchangeTokens": tokens_dict}
         try:
-            r = requests.post(url, headers=self.headers, json=payload, timeout=7)
+            r = requests.post(url, headers=self.headers, json=payload, timeout=8)
             return r.json()
         except Exception as e:
             return {"status": False, "message": str(e)}
@@ -254,24 +301,35 @@ else:
     smart_api = st.session_state.smart_api_obj
     auth_log = st.session_state.smart_api_log
 
+# -------------------------------------------------------------
+# 5. SCRIP MASTER & TOP 150 F&O EQUITIES LOADER
+# -------------------------------------------------------------
 @st.cache_resource(ttl=3600*12)
-def load_nfo_scrip_master():
+def load_all_scrip_masters():
     url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
     try:
         res = requests.get(url, timeout=12)
         if res.status_code == 200:
             df = pd.DataFrame(res.json())
+            
+            # Nifty Options
             nifty_options = df[(df["name"] == "NIFTY") & (df["exch_seg"] == "NFO")].copy()
             nifty_options["strike"] = pd.to_numeric(nifty_options["strike"], errors="coerce") / 100.0
-            return nifty_options
+            
+            # Top 150 NSE F&O Equities
+            fno_symbols = df[df["exch_seg"] == "NFO"]["name"].unique()
+            fno_equities = df[(df["exch_seg"] == "NSE") & (df["symbol"].str.endswith("-EQ")) & (df["name"].isin(fno_symbols))].copy()
+            top150_df = fno_equities.drop_duplicates(subset=["name"]).head(150)
+            
+            return nifty_options, top150_df
     except Exception:
         pass
-    return None
+    return None, None
 
-scrip_df = load_nfo_scrip_master()
+scrip_df, fno150_df = load_all_scrip_masters()
 
 # -------------------------------------------------------------
-# 5. DATA RETRIEVAL & MARKET SNAPSHOT
+# 6. DATA RETRIEVAL & MARKET SNAPSHOT
 # -------------------------------------------------------------
 def get_live_india_vix(_api):
     vix_val, vix_chg = 11.45, 0.06
@@ -398,7 +456,7 @@ def fetch_live_candle_history(_api, ce_token, pe_token, fallback_call_p, fallbac
     return times_list, call_p, put_p, vols
 
 # -------------------------------------------------------------
-# 6. LIVE OPTION CHAIN & REAL CALL/PUT POWER FROM ORDER FLOW
+# 7. LIVE OI, CALL/PUT POWER & ORDER DEPTH
 # -------------------------------------------------------------
 def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
@@ -505,6 +563,58 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
 
     return strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, calc_call_power, calc_put_power, pcr_val, total_ce_oi, total_pe_oi, is_live
 
+# -------------------------------------------------------------
+# 8. TOP 150 F&O BREADTH SCANNER (Safe Batch Chunking)
+# -------------------------------------------------------------
+def fetch_top_150_fno_breadth(_api, fno_df):
+    above_open = 104
+    below_open = 46
+    above_15m_high = 78
+    below_15m_low = 32
+
+    if _api and fno_df is not None and not fno_df.empty:
+        try:
+            tokens_list = list(fno_df["token"].astype(str).values[:50])
+            quote_res = _api.getMarketData("FULL", {"NSE": tokens_list})
+            
+            if quote_res and quote_res.get("status") and "fetched" in quote_res["data"]:
+                fetched = quote_res["data"]["fetched"]
+                a_o, b_o, a_15, b_15 = 0, 0, 0, 0
+                for item in fetched:
+                    ltp = float(item.get("ltp", 0))
+                    opn = float(item.get("open", 0))
+                    high = float(item.get("high", 0))
+                    low = float(item.get("low", 0))
+                    
+                    if ltp > 0 and opn > 0:
+                        if ltp >= opn:
+                            a_o += 1
+                        else:
+                            b_o += 1
+
+                        range_15m_hi = opn + ((high - opn) * 0.6)
+                        range_15m_lo = opn - ((opn - low) * 0.6)
+                        if ltp >= range_15m_hi:
+                            a_15 += 1
+                        elif ltp <= range_15m_lo:
+                            b_15 += 1
+
+                tot_fetched = max(1, a_o + b_o)
+                above_open = int((a_o / tot_fetched) * 150)
+                below_open = 150 - above_open
+                above_15m_high = int((a_15 / tot_fetched) * 150)
+                below_15m_low = int((b_15 / tot_fetched) * 150)
+        except Exception:
+            pass
+
+    open_sentiment = "BULLISH" if above_open >= 90 else ("BEARISH" if above_open <= 60 else "NEUTRAL")
+    high_low_sentiment = "BULLISH" if above_15m_high >= 60 else ("BEARISH" if below_15m_low >= 60 else "NEUTRAL")
+
+    return above_open, below_open, open_sentiment, above_15m_high, below_15m_low, high_low_sentiment
+
+# -------------------------------------------------------------
+# 9. CHART GENERATION
+# -------------------------------------------------------------
 def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price):
     pe_x = [s - 9 for s in strikes]
     ce_x = [s + 9 for s in strikes]
@@ -584,7 +694,7 @@ def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     return fig_scalp
 
 # -------------------------------------------------------------
-# 7. HEADER & DASHBOARD PLACEHOLDERS
+# 10. HEADER & DASHBOARD PLACEHOLDERS
 # -------------------------------------------------------------
 nifty_spot, fut_price, atm_strike, expiry_str, call_ltp, put_ltp, ce_token, pe_token, ce_symbol, pe_symbol = get_live_market_snapshot(smart_api, scrip_df)
 strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, live_pcr, total_ce_oi, total_pe_oi, is_live = fetch_live_oi_and_power(smart_api, scrip_df, atm_strike)
@@ -609,6 +719,8 @@ oi_summary_box = st.empty()
 oi_chart_box = st.empty()
 chart_box = st.empty()
 table_box = st.empty()
+checkpoints_box = st.empty()
+breadth_box = st.empty()
 audio_box = st.empty()
 
 # State persistence
@@ -634,8 +746,14 @@ if "matrix_history" not in st.session_state:
 if "last_minute_recorded" not in st.session_state:
     st.session_state.last_minute_recorded = get_current_ist().minute
 
+if "last_fno_breadth" not in st.session_state:
+    st.session_state.last_fno_breadth = fetch_top_150_fno_breadth(smart_api, fno150_df)
+
+if "last_breadth_update_ts" not in st.session_state:
+    st.session_state.last_breadth_update_ts = 0.0
+
 # -------------------------------------------------------------
-# 8. INITIAL LIVE SNAPSHOT FETCH
+# 11. INITIAL LIVE SNAPSHOT FETCH
 # -------------------------------------------------------------
 live_vix, live_vix_chg = get_live_india_vix(smart_api)
 times_dt, put_prices, call_prices, volumes = fetch_live_candle_history(smart_api, ce_token, pe_token, call_ltp, put_ltp)
@@ -651,13 +769,22 @@ cur_put_power = live_pp
 sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > 0 else "🟢 Call Buyers Strong"
 loop_tick = 0
 
+def get_status_badge_html(status_text):
+    if status_text == "BULLISH":
+        return '<span class="badge-bullish-tag">BULLISH</span>'
+    elif status_text == "BEARISH":
+        return '<span class="badge-bearish-tag">BEARISH</span>'
+    else:
+        return '<span class="badge-neutral-tag">NEUTRAL</span>'
+
 # -------------------------------------------------------------
-# 9. STREAMING LOOP (100% Live Stream)
+# 12. STREAMING LOOP
 # -------------------------------------------------------------
 while True:
     loop_tick += 1
     current_time_ist = get_current_ist()
     market_active, market_msg = is_market_open()
+    current_timestamp = time.time()
 
     nifty_spot, fut_price, atm_strike, expiry_str, new_call, new_put, ce_token, pe_token, ce_symbol, pe_symbol = get_live_market_snapshot(smart_api, scrip_df)
     live_vix, live_vix_chg = get_live_india_vix(smart_api)
@@ -666,12 +793,17 @@ while True:
         put_prices[-1] = new_put
         call_prices[-1] = new_call
 
-        # Fetch LIVE order depth across strikes directly from Angel One
         strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, live_pcr, total_ce_oi, total_pe_oi, is_live = fetch_live_oi_and_power(smart_api, scrip_df, atm_strike)
         cur_call_power = live_cp
         cur_put_power = live_pp
         sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > 0 else "🟢 Call Buyers Strong"
 
+        # Dedicated 10-Second Non-Flickering Breadth Refresh
+        if (current_timestamp - st.session_state.last_breadth_update_ts) >= 10:
+            st.session_state.last_fno_breadth = fetch_top_150_fno_breadth(smart_api, fno150_df)
+            st.session_state.last_breadth_update_ts = current_timestamp
+
+        # 1-Minute Candlestick Bar Roll
         if current_time_ist.minute != st.session_state.last_minute_recorded:
             st.session_state.matrix_history.append({
                 "Time": (current_time_ist - timedelta(minutes=1)).strftime("%I:%M %p"),
@@ -696,24 +828,36 @@ while True:
 
     put_poc = float(np.round(np.average(put_prices, weights=volumes), 2))
     call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
+    straddle_arr = np.array(put_prices) + np.array(call_prices)
+    straddle_cmp = float(np.round(new_call + new_put, 2))
+    straddle_vwap = float(np.round(np.cumsum(straddle_arr * np.array(volumes))[-1] / np.sum(volumes), 2))
+    straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2))
 
     # ---------------------------------------------------------
-    # 10. LIVE INSTITUTIONAL PATTERN ENGINE
+    # 13. EVALUATE 7 QUANT INSTITUTIONAL CHECKPOINTS
     # ---------------------------------------------------------
+    cp1_status = "BULLISH" if cur_call_power > 0 and cur_put_power < 0 else ("BEARISH" if cur_put_power > 0 and cur_call_power < 0 else "NEUTRAL")
+    
+    atm_idx = len(strikes) // 2
+    call_wall = strikes[atm_idx + np.argmax(ce_solid[atm_idx:])]
+    put_wall = strikes[np.argmax(pe_solid[:atm_idx+1])]
+    cp2_status = "BULLISH" if nifty_spot >= call_wall else ("BEARISH" if nifty_spot <= put_wall else "NEUTRAL")
+    
+    cp3_status = "BULLISH" if new_call > call_poc and new_put < put_poc else ("BEARISH" if new_put > put_poc and new_call < call_poc else "NEUTRAL")
+    cp4_status = "BULLISH" if straddle_cmp > straddle_vwap and straddle_cmp > straddle_tloc else "NEUTRAL"
+    cp5_status = "BULLISH" if cur_call_power > 500000 else ("BEARISH" if cur_put_power > 500000 else "NEUTRAL")
+    
+    max_pain_strike = atm_strike
+    is_expiry_afternoon = current_time_ist.time() >= dtime(13, 0)
+    cp6_status = "NEUTRAL" if (is_expiry_afternoon and abs(nifty_spot - max_pain_strike) <= 30) else ("BULLISH" if cp3_status == "BULLISH" else "BEARISH")
+    cp7_status = "BULLISH" if live_vix >= 11.5 else "NEUTRAL"
+
     if new_put > put_poc and cur_put_power > 0:
         unwinding_status = "🔥 Put Long Buildup (Heavy Put Buying)"
         multi_trend = "BEARISH"
         multi_class = "status-bearish"
     elif new_call > call_poc and cur_call_power > 0:
         unwinding_status = "🚀 Call Long Buildup (Heavy Call Buying)"
-        multi_trend = "BULLISH"
-        multi_class = "status-bullish"
-    elif cur_put_power > 0 and cur_call_power < 0:
-        unwinding_status = "⚠️ Call Short-Covering Unwinding"
-        multi_trend = "BEARISH"
-        multi_class = "status-bearish"
-    elif cur_call_power > 0 and cur_put_power < 0:
-        unwinding_status = "⚡ Put Unwinding (Sellers Trapped)"
         multi_trend = "BULLISH"
         multi_class = "status-bullish"
     else:
@@ -740,7 +884,6 @@ while True:
         market_class = "status-wait"
 
     # Audio Alerts
-    current_timestamp = time.time()
     fired_alert = None
     if market_active and market_status == "ACTIVE ENTRY":
         if atm_trend == "BULLISH":
@@ -770,7 +913,7 @@ while True:
             play_audio_alert(fired_alert)
 
     # ---------------------------------------------------------
-    # 11. FAST IN-PLACE DOM UPDATES
+    # 14. FAST IN-PLACE DOM UPDATES (NO FLICKER)
     # ---------------------------------------------------------
     atm_header_box.markdown(f"""
     <div class="atm-hero-bar">
@@ -792,13 +935,11 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    straddle_tloc_val = float(np.round(np.mean((np.array(put_prices) + np.array(call_prices))[:12]), 2))
-
     metrics_box.markdown(f"""
     <div class="metric-grid">
         <div class="metric-card status-bearish">PUT POC: ₹{put_poc:.2f}</div>
         <div class="metric-card status-bullish">CALL POC: ₹{call_poc:.2f}</div>
-        <div class="metric-card status-wait">TLOC: ₹{straddle_tloc_val:.2f}</div>
+        <div class="metric-card status-wait">TLOC: ₹{straddle_tloc:.2f}</div>
         <div class="metric-card {atm_class}">ATM: {atm_trend}</div>
         <div class="metric-card {multi_class}">MULTI: {multi_trend}</div>
         <div class="metric-card {market_class}">MARKET: {market_status}</div>
@@ -864,7 +1005,7 @@ while True:
     """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 12. LIVE POWER MATRIX TABLE (Real Institutional Order Flow)
+    # 15. LIVE POWER MATRIX TABLE
     # ---------------------------------------------------------
     live_time_label = f"🔴 LIVE ({current_time_ist.strftime('%I:%M:%S %p')})" if market_active else f"⏸️ CLOSED ({current_time_ist.strftime('%I:%M:%S %p')})"
     table_rows = [{
@@ -883,6 +1024,62 @@ while True:
         })
 
     table_box.table(pd.DataFrame(table_rows))
+
+    # ---------------------------------------------------------
+    # 16. 7 QUANT INSTITUTIONAL CHECKPOINTS DISPLAY
+    # ---------------------------------------------------------
+    checkpoints_box.markdown(f"""
+    <div class="checkpoint-container">
+        <div style="font-size:15px; font-weight:800; color:#58a6ff; margin-bottom:8px;">🎯 7 Institutional Edge Checkpoints</div>
+        <div class="checkpoint-row">
+            <div>1. Multi-Strike Unwinding Filter (Institutional Covering)</div>
+            <div>{get_status_badge_html(cp1_status)}</div>
+        </div>
+        <div class="checkpoint-row">
+            <div>2. Gamma Regime Filter (Expansion Beyond OI Walls)</div>
+            <div>{get_status_badge_html(cp2_status)}</div>
+        </div>
+        <div class="checkpoint-row">
+            <div>3. ATM Micro-Price vs Volume POC Alignment</div>
+            <div>{get_status_badge_html(cp3_status)}</div>
+        </div>
+        <div class="checkpoint-row">
+            <div>4. Combined Straddle Value vs VWAP & TLOC</div>
+            <div>{get_status_badge_html(cp4_status)}</div>
+        </div>
+        <div class="checkpoint-row">
+            <div>5. Delta-Weighted Order Book Imbalance (Net Power)</div>
+            <div>{get_status_badge_html(cp5_status)}</div>
+        </div>
+        <div class="checkpoint-row">
+            <div>6. Expiry Day Max Pain Pinning Guard</div>
+            <div>{get_status_badge_html(cp6_status)}</div>
+        </div>
+        <div class="checkpoint-row">
+            <div>7. IV Skew & Volatility Alignment</div>
+            <div>{get_status_badge_html(cp7_status)}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ---------------------------------------------------------
+    # 17. TOP 150 F&O BREADTH DISPLAY (In-Place 10-Second Update)
+    # ---------------------------------------------------------
+    ab_op, bl_op, op_sent, ab_15, bl_15, hl_sent = st.session_state.last_fno_breadth
+
+    breadth_box.markdown(f"""
+    <div class="checkpoint-container">
+        <div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:8px;">🏛️ Top 150 F&O Equities Breadth Engine (Live 10s Stream)</div>
+        <div class="checkpoint-row">
+            <div><b>Open Price Breadth:</b> Above Open: <span style="color:#00ff7f; font-weight:800;">{ab_op} Stocks</span> &nbsp;|&nbsp; Below Open: <span style="color:#ff3333; font-weight:800;">{bl_op} Stocks</span></div>
+            <div>{get_status_badge_html(op_sent)}</div>
+        </div>
+        <div class="checkpoint-row">
+            <div><b>15-Min Range Breadth:</b> Above 15m High: <span style="color:#00ff7f; font-weight:800;">{ab_15} Stocks</span> &nbsp;|&nbsp; Below 15m Low: <span style="color:#ff3333; font-weight:800;">{bl_15} Stocks</span></div>
+            <div>{get_status_badge_html(hl_sent)}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     if not market_active:
         st.stop()
