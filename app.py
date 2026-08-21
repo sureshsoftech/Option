@@ -149,7 +149,7 @@ st.markdown("""
     .badge-bullish-tag {
         background-color: #00ff7f;
         color: #000000;
-        padding: 4px 14px;
+        padding: 5px 14px;
         border-radius: 4px;
         font-weight: 800;
         font-size: 13px;
@@ -160,7 +160,7 @@ st.markdown("""
     .badge-bearish-tag {
         background-color: #ff3333;
         color: #ffffff;
-        padding: 4px 14px;
+        padding: 5px 14px;
         border-radius: 4px;
         font-weight: 800;
         font-size: 13px;
@@ -171,10 +171,80 @@ st.markdown("""
     .badge-neutral-tag {
         background-color: #4b5563;
         color: #ffffff;
-        padding: 4px 10px;
+        padding: 5px 12px;
         border-radius: 4px;
         font-weight: 700;
-        font-size: 12px;
+        font-size: 13px;
+    }
+
+    /* Breadth Number Badges */
+    .num-box-buy {
+        background-color: #000000;
+        color: #00ff7f;
+        border: 2px solid #00ff7f;
+        padding: 4px 14px;
+        border-radius: 6px;
+        font-weight: 900;
+        font-size: 20px;
+        display: inline-block;
+        text-align: center;
+        min-width: 50px;
+    }
+    .num-box-buy-highlight {
+        background-color: #00ff7f;
+        color: #000000;
+        border: 2px solid #00ff7f;
+        padding: 4px 14px;
+        border-radius: 6px;
+        font-weight: 900;
+        font-size: 20px;
+        display: inline-block;
+        text-align: center;
+        min-width: 50px;
+    }
+    .num-box-sell {
+        background-color: #000000;
+        color: #ff3333;
+        border: 2px solid #ff3333;
+        padding: 4px 14px;
+        border-radius: 6px;
+        font-weight: 900;
+        font-size: 20px;
+        display: inline-block;
+        text-align: center;
+        min-width: 50px;
+    }
+    .num-box-sell-highlight {
+        background-color: #ff3333;
+        color: #ffffff;
+        border: 2px solid #ff3333;
+        padding: 4px 14px;
+        border-radius: 6px;
+        font-weight: 900;
+        font-size: 20px;
+        display: inline-block;
+        text-align: center;
+        min-width: 50px;
+    }
+
+    /* Heavyweight Badges */
+    .heavy-badge-green {
+        background-color: #000000;
+        color: #00ff7f;
+        border: 1.5px solid #00ff7f;
+        padding: 4px 10px;
+        border-radius: 5px;
+        font-weight: 800;
+        font-size: 13px;
+    }
+    .heavy-badge-red {
+        background-color: #000000;
+        color: #ff3333;
+        border: 1.5px solid #ff3333;
+        padding: 4px 10px;
+        border-radius: 5px;
+        font-weight: 800;
+        font-size: 13px;
     }
 
     .breadth-flex-row {
@@ -183,12 +253,12 @@ st.markdown("""
         align-items: center;
         padding: 10px 4px;
         border-bottom: 1px solid #1f2937;
-        font-size: 13px;
+        font-size: 14px;
         gap: 12px;
         flex-wrap: wrap;
     }
     .breadth-flex-row:last-child { border-bottom: none; }
-    .breadth-label { font-weight: 700; color: #e6edf3; }
+    .breadth-label { font-weight: 700; color: #e6edf3; font-size: 14px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -542,17 +612,26 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     return strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, pcr_val, total_ce_oi, total_pe_oi, is_live
 
 # -------------------------------------------------------------
-# 7. NIFTY 50 MARKET BREADTH SCANNER
+# 7. NIFTY 50 BREADTH & TOP 3 HEAVYWEIGHTS (HDFCBANK, ICICIBANK, RELIANCE)
 # -------------------------------------------------------------
-def fetch_nifty_50_breadth(_api, n50_df):
+def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df):
     above_open = 18
     below_open = 32
     above_15m_high = 6
     below_15m_low = 18
+    
+    # Top 3 weightage statuses
+    heavyweights = {
+        "HDFCBANK": {"status": "ABOVE OPEN", "price": 0.0, "open": 0.0},
+        "ICICIBANK": {"status": "ABOVE OPEN", "price": 0.0, "open": 0.0},
+        "RELIANCE": {"status": "BELOW OPEN", "price": 0.0, "open": 0.0}
+    }
 
     if _api and n50_df is not None and not n50_df.empty:
         try:
             tokens_list = [str(t) for t in list(n50_df["token"].values)[:50]]
+            token_to_name = {str(row["token"]): row["name"] for _, row in n50_df.iterrows()}
+            
             a_o, b_o, a_15, b_15 = 0, 0, 0, 0
             
             for chunk_i in range(0, len(tokens_list), 15):
@@ -561,6 +640,7 @@ def fetch_nifty_50_breadth(_api, n50_df):
                 
                 if quote_res and quote_res.get("status") and "fetched" in quote_res.get("data", {}):
                     for item in quote_res["data"]["fetched"]:
+                        tok_id = str(item.get("symbolToken", item.get("token", "")))
                         ltp = float(item.get("ltp", 0))
                         opn = float(item.get("open", 0))
                         high = float(item.get("high", 0))
@@ -579,6 +659,12 @@ def fetch_nifty_50_breadth(_api, n50_df):
                             elif ltp <= range_15m_lo:
                                 b_15 += 1
 
+                            # Track Top 3
+                            sym_name = token_to_name.get(tok_id, "")
+                            if sym_name in heavyweights:
+                                status_str = "ABOVE OPEN" if ltp >= opn else "BELOW OPEN"
+                                heavyweights[sym_name] = {"status": status_str, "price": ltp, "open": opn}
+
             if (a_o + b_o) > 0:
                 above_open = a_o
                 below_open = b_o
@@ -587,8 +673,9 @@ def fetch_nifty_50_breadth(_api, n50_df):
         except Exception:
             pass
 
-    open_sentiment = "BULLISH" if above_open >= 30 else ("BEARISH" if below_open >= 30 else "NEUTRAL")
-    return above_open, below_open, open_sentiment, above_15m_high, below_15m_low
+    # Exact Requested Rule: Highlight if >= 35 stocks
+    open_sentiment = "BULLISH" if above_open >= 35 else ("BEARISH" if below_open >= 35 else "NEUTRAL")
+    return above_open, below_open, open_sentiment, above_15m_high, below_15m_low, heavyweights
 
 # -------------------------------------------------------------
 # 8. LOCKED CHART GENERATION (Fixed Axes)
@@ -687,7 +774,7 @@ st.title("⚡ SHK TRADE LABS")
 conn_badge = "🟢 Angel One SmartAPI Feed (IST)" if smart_api else f"🟡 Feed Status: {auth_log}"
 st.caption(f"Session Status: {conn_badge}")
 
-# Exact Requested Hierarchy
+# Exact Layout Sequence
 atm_header_box = st.empty()
 breadth_box = st.empty()
 checkpoints_box = st.empty()
@@ -719,7 +806,7 @@ if "last_minute_recorded" not in st.session_state:
     st.session_state.last_minute_recorded = get_current_ist().minute
 
 if "last_n50_breadth" not in st.session_state:
-    st.session_state.last_n50_breadth = fetch_nifty_50_breadth(smart_api, nifty50_df)
+    st.session_state.last_n50_breadth = fetch_nifty_50_breadth_and_heavyweights(smart_api, nifty50_df)
 
 if "last_breadth_update_ts" not in st.session_state:
     st.session_state.last_breadth_update_ts = 0.0
@@ -776,7 +863,7 @@ while True:
 
         # 10-Second Breadth Refresh
         if (current_timestamp - st.session_state.last_breadth_update_ts) >= 10:
-            st.session_state.last_n50_breadth = fetch_nifty_50_breadth(smart_api, nifty50_df)
+            st.session_state.last_n50_breadth = fetch_nifty_50_breadth_and_heavyweights(smart_api, nifty50_df)
             st.session_state.last_breadth_update_ts = current_timestamp
 
         # 1-Minute Candle Roll
@@ -908,24 +995,48 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # 2. Nifty 50 Market Breadth Display
-    ab_op, bl_op, op_sent, ab_15, bl_15 = st.session_state.last_n50_breadth
+    # 2. Nifty 50 Market Breadth + Top 3 Heavyweights Display
+    ab_op, bl_op, op_sent, ab_15, bl_15, heavy_dict = st.session_state.last_n50_breadth
+    
+    # Conditional Styling for >= 35 threshold
+    buy_class = "num-box-buy-highlight" if ab_op >= 35 else "num-box-buy"
+    sell_class = "num-box-sell-highlight" if bl_op >= 35 else "num-box-sell"
+    
+    # Heavyweight badge HTML builders
+    def get_heavy_badge(stock_sym):
+        info = heavy_dict.get(stock_sym, {"status": "ABOVE OPEN", "price": 0.0})
+        css_cls = "heavy-badge-green" if info["status"] == "ABOVE OPEN" else "heavy-badge-red"
+        return f'<span class="{css_cls}">{stock_sym}: {info["status"]} (₹{info["price"]:.1f})</span>'
+
     breadth_html = (
         '<div class="checkpoint-container">'
         '<div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:12px;">🏛️ Nifty 50 Equities Breadth Engine (Live 10s Stream)</div>'
+        
+        '<!-- Row 1: Open Price Breadth -->'
         '<div class="breadth-flex-row">'
         '<span class="breadth-label">Above Open:</span>'
-        f'<span class="badge-bullish-tag">{ab_op}</span>'
-        f'<span class="badge-bearish-tag">{bl_op}</span>'
+        f'<span class="{buy_class}">{ab_op}</span>'
+        f'<span class="{sell_class}">{bl_op}</span>'
         '<span class="breadth-label">Below Open</span>'
         f'<div style="margin-left: auto;">{get_status_badge_html(op_sent)}</div>'
         '</div>'
+        
+        '<!-- Row 2: 15-Min Range Breadth -->'
         '<div class="breadth-flex-row">'
         '<span class="breadth-label">Above 15m High:</span>'
-        f'<span class="badge-bullish-tag">{ab_15}</span>'
-        f'<span class="badge-bearish-tag">{bl_15}</span>'
+        f'<span class="num-box-buy">{ab_15}</span>'
+        f'<span class="num-box-sell">{bl_15}</span>'
         '<span class="breadth-label">Below 15m Low</span>'
         '</div>'
+        
+        '<!-- Row 3: Top 3 Heavyweights (HDFC Bank, ICICI Bank, Reliance) -->'
+        '<div class="breadth-flex-row" style="gap: 14px; padding-top: 12px;">'
+        '<span class="breadth-label">Top 3 Weights:</span>'
+        f'{get_heavy_badge("HDFCBANK")}'
+        f'{get_heavy_badge("ICICIBANK")}'
+        f'{get_heavy_badge("RELIANCE")}'
+        '</div>'
+        
         '</div>'
     )
     breadth_box.markdown(breadth_html, unsafe_allow_html=True)
