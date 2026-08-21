@@ -204,7 +204,7 @@ st.markdown("""
     }
     .num-box-sell {
         background-color: #000000;
-        color: #ff3333;
+        color: #ffffff; /* White font inside red border */
         border: 2px solid #ff3333;
         padding: 4px 14px;
         border-radius: 6px;
@@ -227,24 +227,30 @@ st.markdown("""
         min-width: 50px;
     }
 
-    /* Heavyweight Badges */
-    .heavy-badge-green {
+    /* Top Weightage 2-Box System (Black inside, White font) */
+    .heavy-box-green {
         background-color: #000000;
-        color: #00ff7f;
-        border: 1.5px solid #00ff7f;
-        padding: 4px 10px;
-        border-radius: 5px;
-        font-weight: 800;
-        font-size: 13px;
+        color: #ffffff;
+        border: 2px solid #00ff7f;
+        padding: 4px 14px;
+        border-radius: 6px;
+        font-weight: 900;
+        font-size: 20px;
+        display: inline-block;
+        text-align: center;
+        min-width: 50px;
     }
-    .heavy-badge-red {
+    .heavy-box-red {
         background-color: #000000;
-        color: #ff3333;
-        border: 1.5px solid #ff3333;
-        padding: 4px 10px;
-        border-radius: 5px;
-        font-weight: 800;
-        font-size: 13px;
+        color: #ffffff;
+        border: 2px solid #ff3333;
+        padding: 4px 14px;
+        border-radius: 6px;
+        font-weight: 900;
+        font-size: 20px;
+        display: inline-block;
+        text-align: center;
+        min-width: 50px;
     }
 
     .breadth-flex-row {
@@ -612,7 +618,7 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     return strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, pcr_val, total_ce_oi, total_pe_oi, is_live
 
 # -------------------------------------------------------------
-# 7. NIFTY 50 BREADTH & TOP 3 HEAVYWEIGHTS (HDFCBANK, ICICIBANK, RELIANCE)
+# 7. NIFTY 50 BREADTH & TOP 3 HEAVYWEIGHTS (2-BOX COUNTS)
 # -------------------------------------------------------------
 def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df):
     above_open = 18
@@ -620,12 +626,8 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df):
     above_15m_high = 6
     below_15m_low = 18
     
-    # Top 3 weightage statuses
-    heavyweights = {
-        "HDFCBANK": {"status": "ABOVE OPEN", "price": 0.0, "open": 0.0},
-        "ICICIBANK": {"status": "ABOVE OPEN", "price": 0.0, "open": 0.0},
-        "RELIANCE": {"status": "BELOW OPEN", "price": 0.0, "open": 0.0}
-    }
+    heavy_above_cnt = 1
+    heavy_below_cnt = 2
 
     if _api and n50_df is not None and not n50_df.empty:
         try:
@@ -633,6 +635,8 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df):
             token_to_name = {str(row["token"]): row["name"] for _, row in n50_df.iterrows()}
             
             a_o, b_o, a_15, b_15 = 0, 0, 0, 0
+            h_above, h_below = 0, 0
+            target_heavy = ["HDFCBANK", "ICICIBANK", "RELIANCE"]
             
             for chunk_i in range(0, len(tokens_list), 15):
                 sub_toks = tokens_list[chunk_i:chunk_i+15]
@@ -659,23 +663,26 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df):
                             elif ltp <= range_15m_lo:
                                 b_15 += 1
 
-                            # Track Top 3
                             sym_name = token_to_name.get(tok_id, "")
-                            if sym_name in heavyweights:
-                                status_str = "ABOVE OPEN" if ltp >= opn else "BELOW OPEN"
-                                heavyweights[sym_name] = {"status": status_str, "price": ltp, "open": opn}
+                            if sym_name in target_heavy:
+                                if ltp >= opn:
+                                    h_above += 1
+                                else:
+                                    h_below += 1
 
             if (a_o + b_o) > 0:
                 above_open = a_o
                 below_open = b_o
                 above_15m_high = a_15
                 below_15m_low = b_15
+                heavy_above_cnt = h_above
+                heavy_below_cnt = h_below
         except Exception:
             pass
 
     # Exact Requested Rule: Highlight if >= 35 stocks
     open_sentiment = "BULLISH" if above_open >= 35 else ("BEARISH" if below_open >= 35 else "NEUTRAL")
-    return above_open, below_open, open_sentiment, above_15m_high, below_15m_low, heavyweights
+    return above_open, below_open, open_sentiment, above_15m_high, below_15m_low, heavy_above_cnt, heavy_below_cnt
 
 # -------------------------------------------------------------
 # 8. LOCKED CHART GENERATION (Fixed Axes)
@@ -978,7 +985,7 @@ while True:
         market_class = "status-wait"
 
     # ---------------------------------------------------------
-    # 13. FAST IN-PLACE DOM UPDATES (NEW REQUESTED HIERARCHY)
+    # 13. FAST IN-PLACE DOM UPDATES
     # ---------------------------------------------------------
     # 1. Top Price Section (Nifty, Fut, ATM, Call, Put)
     atm_header_box.markdown(f"""
@@ -995,19 +1002,13 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # 2. Nifty 50 Market Breadth + Top 3 Heavyweights Display
-    ab_op, bl_op, op_sent, ab_15, bl_15, heavy_dict = st.session_state.last_n50_breadth
+    # 2. Nifty 50 Market Breadth + Clean 2-Box Heavyweights Display
+    ab_op, bl_op, op_sent, ab_15, bl_15, h_above_cnt, h_below_cnt = st.session_state.last_n50_breadth
     
     # Conditional Styling for >= 35 threshold
     buy_class = "num-box-buy-highlight" if ab_op >= 35 else "num-box-buy"
     sell_class = "num-box-sell-highlight" if bl_op >= 35 else "num-box-sell"
     
-    # Heavyweight badge HTML builders
-    def get_heavy_badge(stock_sym):
-        info = heavy_dict.get(stock_sym, {"status": "ABOVE OPEN", "price": 0.0})
-        css_cls = "heavy-badge-green" if info["status"] == "ABOVE OPEN" else "heavy-badge-red"
-        return f'<span class="{css_cls}">{stock_sym}: {info["status"]} (₹{info["price"]:.1f})</span>'
-
     breadth_html = (
         '<div class="checkpoint-container">'
         '<div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:12px;">🏛️ Nifty 50 Equities Breadth Engine (Live 10s Stream)</div>'
@@ -1029,12 +1030,11 @@ while True:
         '<span class="breadth-label">Below 15m Low</span>'
         '</div>'
         
-        '<!-- Row 3: Top 3 Heavyweights (HDFC Bank, ICICI Bank, Reliance) -->'
-        '<div class="breadth-flex-row" style="gap: 14px; padding-top: 12px;">'
-        '<span class="breadth-label">Top 3 Weights:</span>'
-        f'{get_heavy_badge("HDFCBANK")}'
-        f'{get_heavy_badge("ICICIBANK")}'
-        f'{get_heavy_badge("RELIANCE")}'
+        '<!-- Row 3: Top Weightage 2-Box System -->'
+        '<div class="breadth-flex-row" style="gap: 14px; padding-top: 10px;">'
+        '<span class="breadth-label">Top Weightage:</span>'
+        f'<span class="heavy-box-green">{h_above_cnt}</span>'
+        f'<span class="heavy-box-red">{h_below_cnt}</span>'
         '</div>'
         
         '</div>'
