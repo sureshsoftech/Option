@@ -439,8 +439,8 @@ def load_all_scrip_masters():
             nifty_options = df[(df["name"] == "NIFTY") & (df["exch_seg"] == "NFO")].copy()
             raw_strikes = pd.to_numeric(nifty_options["strike"], errors="coerce").fillna(0.0)
             
-            # Strike unit normalization
-            nifty_options["strike"] = raw_strikes.apply(lambda x: x / 100.0 if x > 100000 else x)
+            # Strike unit normalization (Converts 2430000.0 or 24300.0 reliably to 24300)
+            nifty_options["strike_int"] = raw_strikes.apply(lambda x: int(round(x / 100.0)) if x > 100000 else int(round(x)))
             nifty_options["parsed_date"] = nifty_options["expiry"].apply(parse_expiry_date)
             
             n50_equities = df[(df["exch_seg"] == "NSE") & (df["symbol"].str.endswith("-EQ")) & (df["name"].isin(NIFTY_50_SYMBOLS))].copy()
@@ -461,7 +461,7 @@ def get_live_india_vix(_api):
     if _api:
         try:
             vix_res = _api.ltpData("NSE", "INDIA VIX", "26001")
-            if vix_res and vix_res.get("status"):
+            if vix_res and vix_res.get("status") and "data" in vix_res:
                 vix_val = float(vix_res["data"]["ltp"])
                 close_val = float(vix_res["data"].get("close", vix_val))
                 vix_chg = round(vix_val - close_val, 2)
@@ -481,7 +481,7 @@ def get_live_market_snapshot(_api, scrip_data):
     if _api:
         try:
             spot_data = _api.ltpData("NSE", "Nifty 50", "99926000")
-            if spot_data and spot_data.get("status"):
+            if spot_data and spot_data.get("status") and "data" in spot_data:
                 nifty_spot = float(spot_data["data"]["ltp"])
                 fut_price = nifty_spot + 50.00
         except Exception:
@@ -502,21 +502,21 @@ def get_live_market_snapshot(_api, scrip_data):
                 current_exp_df = valid_options[valid_options["parsed_date"] == nearest_date]
                 expiry_str = str(current_exp_df.iloc[0]["expiry"])
 
-                ce_match = current_exp_df[(current_exp_df["strike"] == atm_strike) & (current_exp_df["symbol"].str.endswith("CE"))]
-                pe_match = current_exp_df[(current_exp_df["strike"] == atm_strike) & (current_exp_df["symbol"].str.endswith("PE"))]
+                ce_match = current_exp_df[(current_exp_df["strike_int"] == atm_strike) & (current_exp_df["symbol"].str.endswith("CE"))]
+                pe_match = current_exp_df[(current_exp_df["strike_int"] == atm_strike) & (current_exp_df["symbol"].str.endswith("PE"))]
 
                 if not ce_match.empty:
                     ce_token = str(ce_match.iloc[0]["token"])
-                    ce_symbol = ce_match.iloc[0]["symbol"]
+                    ce_symbol = str(ce_match.iloc[0]["symbol"])
                     ce_quote = _api.ltpData("NFO", ce_symbol, ce_token)
-                    if ce_quote.get("status"):
+                    if ce_quote.get("status") and "data" in ce_quote:
                         call_ltp = float(ce_quote["data"]["ltp"])
 
                 if not pe_match.empty:
                     pe_token = str(pe_match.iloc[0]["token"])
-                    pe_symbol = pe_match.iloc[0]["symbol"]
+                    pe_symbol = str(pe_match.iloc[0]["symbol"])
                     pe_quote = _api.ltpData("NFO", pe_symbol, pe_token)
-                    if pe_quote.get("status"):
+                    if pe_quote.get("status") and "data" in pe_quote:
                         put_ltp = float(pe_quote["data"]["ltp"])
         except Exception:
             pass
@@ -547,12 +547,12 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
                 nearest_date = valid_options["parsed_date"].min()
                 current_exp_df = valid_options[valid_options["parsed_date"] == nearest_date]
 
-                target_ce = current_exp_df[(current_exp_df["strike"].isin(strikes)) & (current_exp_df["symbol"].str.endswith("CE"))]
-                target_pe = current_exp_df[(current_exp_df["strike"].isin(strikes)) & (current_exp_df["symbol"].str.endswith("PE"))]
+                target_ce = current_exp_df[(current_exp_df["strike_int"].isin(strikes)) & (current_exp_df["symbol"].str.endswith("CE"))]
+                target_pe = current_exp_df[(current_exp_df["strike_int"].isin(strikes)) & (current_exp_df["symbol"].str.endswith("PE"))]
 
                 all_tokens = [str(x) for x in list(target_ce["token"].values) + list(target_pe["token"].values)]
                 
-                # Single batch query to Angel One
+                # Direct batch request
                 res = _api.getMarketData("FULL", {"NFO": all_tokens})
                 if res and res.get("status") and "fetched" in res.get("data", {}):
                     fetched_items = {str(itm.get("symbolToken", itm.get("token", ""))): itm for itm in res["data"]["fetched"]}
@@ -560,7 +560,7 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
                     tmp_cp, tmp_pp = 0, 0
                     for _, row in target_ce.iterrows():
                         t_str = str(row["token"])
-                        s_val = int(row["strike"])
+                        s_val = int(row["strike_int"])
                         if t_str in fetched_items:
                             itm = fetched_items[t_str]
                             oi = int(itm.get("opnInterest", itm.get("openInterest", 0)))
@@ -575,7 +575,7 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
 
                     for _, row in target_pe.iterrows():
                         t_str = str(row["token"])
-                        s_val = int(row["strike"])
+                        s_val = int(row["strike_int"])
                         if t_str in fetched_items:
                             itm = fetched_items[t_str]
                             oi = int(itm.get("opnInterest", itm.get("openInterest", 0)))
@@ -628,7 +628,7 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     return strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, pcr_val, total_ce_oi, total_pe_oi, is_live
 
 # -------------------------------------------------------------
-# 7. LIVE NIFTY 50 BREADTH (Reliable Dual 25-Token Chunking)
+# 7. LIVE NIFTY 50 BREADTH (Fast 25-Token Batch Mode)
 # -------------------------------------------------------------
 def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
     above_open, below_open, above_15m_high, below_15m_low, heavy_above_cnt, heavy_below_cnt = prev_cached
@@ -642,7 +642,7 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
             h_above, h_below = 0, 0
             target_heavy = ["HDFCBANK", "ICICIBANK", "RELIANCE"]
 
-            # Query in two 25-token chunks
+            # Dual 25-token queries
             for chunk_i in range(0, len(tokens_list), 25):
                 sub_toks = tokens_list[chunk_i:chunk_i+25]
                 quote_res = _api.getMarketData("OHLC", {"NSE": sub_toks})
@@ -689,11 +689,17 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
     return above_open, below_open, open_sentiment, above_15m_high, below_15m_low, heavy_above_cnt, heavy_below_cnt
 
 # -------------------------------------------------------------
-# 8. LOCKED CHART GENERATION
+# 8. LOCKED CHART GENERATION (Always Renders Scaffold)
 # -------------------------------------------------------------
 def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price):
-    if not strikes or (sum(pe_solid) + sum(ce_solid) == 0):
-        return None
+    if not strikes:
+        strikes = [24300 + (i * 50) for i in range(-10, 11)]
+        pe_solid = [0] * 21
+        pe_crossed = [0] * 21
+        pe_hollow = [0] * 21
+        ce_solid = [0] * 21
+        ce_crossed = [0] * 21
+        ce_hollow = [0] * 21
 
     pe_x = [s - 9 for s in strikes]
     ce_x = [s + 9 for s in strikes]
@@ -722,25 +728,28 @@ def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_cross
     return fig_oi
 
 def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
-    if len(call_prices) < 2 or sum(volumes) == 0:
-        return None
+    if not times_dt or len(times_dt) < 2:
+        times_dt = [datetime.now(timezone.utc).astimezone(IST) - timedelta(minutes=i) for i in range(5, -1, -1)]
+        put_prices = [0.0] * 6
+        call_prices = [0.0] * 6
+        volumes = [1] * 6
 
     times_str = [t.strftime("%I:%M %p") for t in times_dt]
-    put_poc = float(np.round(np.average(put_prices, weights=volumes), 2))
-    call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
+    put_poc = float(np.round(np.average(put_prices, weights=volumes), 2)) if sum(volumes) > 0 else 0.0
+    call_poc = float(np.round(np.average(call_prices, weights=volumes), 2)) if sum(volumes) > 0 else 0.0
     straddle_arr = np.array(put_prices) + np.array(call_prices)
     vol_arr = np.array(volumes)
-    straddle_vwap_arr = np.cumsum(straddle_arr * vol_arr) / np.cumsum(vol_arr)
+    straddle_vwap_arr = np.cumsum(straddle_arr * vol_arr) / np.cumsum(vol_arr) if sum(volumes) > 0 else straddle_arr
     straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2)) if len(straddle_arr) >= 12 else float(np.round(np.mean(straddle_arr), 2))
-    delta_force = np.convolve(np.random.randn(len(times_dt)) * 1.8, np.ones(3)/3, mode='same')
-    cvd_line = np.cumsum(delta_force * 50)
+    delta_force = np.zeros(len(times_dt))
+    cvd_line = np.zeros(len(times_dt))
     ts_dots_put = np.full(len(times_dt), np.nan)
     ts_dots_call = np.full(len(times_dt), np.nan)
 
     for i in range(1, len(times_dt)):
-        if put_prices[i] >= put_poc:
+        if put_prices[i] >= put_poc and put_poc > 0:
             ts_dots_put[i] = put_prices[i] + 1.2
-        if call_prices[i] >= call_poc:
+        if call_prices[i] >= call_poc and call_poc > 0:
             ts_dots_call[i] = call_prices[i] + 1.2
 
     fig_scalp = make_subplots(
@@ -765,8 +774,10 @@ def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     fig_scalp.add_trace(go.Bar(x=times_str, y=delta_force, marker_color=bar_colors, name="SMI Delta"), row=3, col=1)
     fig_scalp.add_trace(go.Scatter(x=times_str, y=cvd_line / 10, name="CVD Divergence", line=dict(color="#00e5ff", width=1.5)), row=3, col=1)
 
-    min_p1 = min(min(put_prices), min(call_prices), call_poc, put_poc) - 5
+    min_p1 = max(0, min(min(put_prices), min(call_prices), call_poc, put_poc) - 5)
     max_p1 = max(max(put_prices), max(call_prices), call_poc, put_poc) + 5
+    if min_p1 == max_p1:
+        min_p1, max_p1 = 0, 100
 
     fig_scalp.update_layout(
         height=640, template="plotly_dark", margin=dict(l=8, r=8, t=26, b=8),
@@ -836,8 +847,7 @@ def get_status_badge_html(status_text):
 live_vix, live_vix_chg = get_live_india_vix(smart_api)
 
 initial_fig_oi = render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price)
-if initial_fig_oi:
-    oi_chart_box.plotly_chart(initial_fig_oi, key="init_oi_chart", config={"displayModeBar": False, "staticPlot": False})
+oi_chart_box.plotly_chart(initial_fig_oi, key="init_oi_chart", config={"displayModeBar": False, "staticPlot": False})
 
 times_dt = st.session_state.live_candle_buffer["times"]
 put_prices = st.session_state.live_candle_buffer["puts"]
@@ -845,8 +855,7 @@ call_prices = st.session_state.live_candle_buffer["calls"]
 volumes = st.session_state.live_candle_buffer["vols"]
 
 initial_fig_scalp = render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike)
-if initial_fig_scalp:
-    chart_box.plotly_chart(initial_fig_scalp, key="init_scalp_chart", config={"displayModeBar": False, "staticPlot": False})
+chart_box.plotly_chart(initial_fig_scalp, key="init_scalp_chart", config={"displayModeBar": False, "staticPlot": False})
 
 cur_call_power = live_cp
 cur_put_power = live_pp
