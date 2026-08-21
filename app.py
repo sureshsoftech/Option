@@ -416,7 +416,7 @@ else:
     auth_log = st.session_state.smart_api_log
 
 # -------------------------------------------------------------
-# 4. SCRIP MASTER & NIFTY 50 EQUITIES LOADER
+# 4. SCRIP MASTER & NIFTY 50 EQUITIES LOADER (STRIKE FIX APPLIED)
 # -------------------------------------------------------------
 NIFTY_50_SYMBOLS = [
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR", "ITC", "SBIN",
@@ -437,7 +437,14 @@ def load_all_scrip_masters():
             df = pd.DataFrame(res.json())
             
             nifty_options = df[(df["name"] == "NIFTY") & (df["exch_seg"] == "NFO")].copy()
-            nifty_options["strike"] = pd.to_numeric(nifty_options["strike"], errors="coerce") / 100.0
+            raw_strikes = pd.to_numeric(nifty_options["strike"], errors="coerce").fillna(0.0)
+            
+            # Strike unit normalization
+            if raw_strikes.max() > 100000:
+                nifty_options["strike"] = raw_strikes / 100.0
+            else:
+                nifty_options["strike"] = raw_strikes
+
             nifty_options["parsed_date"] = nifty_options["expiry"].apply(parse_expiry_date)
             
             n50_equities = df[(df["exch_seg"] == "NSE") & (df["symbol"].str.endswith("-EQ")) & (df["name"].isin(NIFTY_50_SYMBOLS))].copy()
@@ -549,7 +556,7 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
 
                 all_tokens = [str(x) for x in list(target_ce["token"].values) + list(target_pe["token"].values)]
                 
-                # Single request containing exactly the strikes to query
+                # Single batch query to Angel One
                 res = _api.getMarketData("FULL", {"NFO": all_tokens})
                 if res and res.get("status") and "fetched" in res.get("data", {}):
                     fetched_items = {str(itm.get("symbolToken", itm.get("token", ""))): itm for itm in res["data"]["fetched"]}
@@ -625,7 +632,7 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     return strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, pcr_val, total_ce_oi, total_pe_oi, is_live
 
 # -------------------------------------------------------------
-# 7. LIVE NIFTY 50 BREADTH (Single-Call 50-Token OHLC Fetch)
+# 7. LIVE NIFTY 50 BREADTH (Reliable Dual 25-Token Chunking)
 # -------------------------------------------------------------
 def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
     above_open, below_open, above_15m_high, below_15m_low, heavy_above_cnt, heavy_below_cnt = prev_cached
@@ -635,48 +642,50 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
             tokens_list = [str(t) for t in list(n50_df["token"].values)[:50]]
             token_to_name = {str(row["token"]): row["name"] for _, row in n50_df.iterrows()}
             
-            # Fetch all 50 in 1 single request
-            quote_res = _api.getMarketData("OHLC", {"NSE": tokens_list})
-            
-            if quote_res and quote_res.get("status") and "fetched" in quote_res.get("data", {}):
-                a_o, b_o, a_15, b_15 = 0, 0, 0, 0
-                h_above, h_below = 0, 0
-                target_heavy = ["HDFCBANK", "ICICIBANK", "RELIANCE"]
+            a_o, b_o, a_15, b_15 = 0, 0, 0, 0
+            h_above, h_below = 0, 0
+            target_heavy = ["HDFCBANK", "ICICIBANK", "RELIANCE"]
 
-                for item in quote_res["data"]["fetched"]:
-                    tok_id = str(item.get("symbolToken", item.get("token", "")))
-                    ltp = float(item.get("ltp", 0))
-                    opn = float(item.get("open", 0))
-                    high = float(item.get("high", 0))
-                    low = float(item.get("low", 0))
-                    
-                    if ltp > 0 and opn > 0:
-                        if ltp >= opn:
-                            a_o += 1
-                        else:
-                            b_o += 1
-
-                        range_15m_hi = opn + ((high - opn) * 0.5)
-                        range_15m_lo = opn - ((opn - low) * 0.5)
-                        if ltp >= range_15m_hi:
-                            a_15 += 1
-                        elif ltp <= range_15m_lo:
-                            b_15 += 1
-
-                        sym_name = token_to_name.get(tok_id, "")
-                        if sym_name in target_heavy:
+            # Query in two 25-token chunks
+            for chunk_i in range(0, len(tokens_list), 25):
+                sub_toks = tokens_list[chunk_i:chunk_i+25]
+                quote_res = _api.getMarketData("OHLC", {"NSE": sub_toks})
+                
+                if quote_res and quote_res.get("status") and "fetched" in quote_res.get("data", {}):
+                    for item in quote_res["data"]["fetched"]:
+                        tok_id = str(item.get("symbolToken", item.get("token", "")))
+                        ltp = float(item.get("ltp", 0))
+                        opn = float(item.get("open", 0))
+                        high = float(item.get("high", 0))
+                        low = float(item.get("low", 0))
+                        
+                        if ltp > 0 and opn > 0:
                             if ltp >= opn:
-                                h_above += 1
+                                a_o += 1
                             else:
-                                h_below += 1
+                                b_o += 1
 
-                if (a_o + b_o) > 0:
-                    above_open = a_o
-                    below_open = b_o
-                    above_15m_high = a_15
-                    below_15m_low = b_15
-                    heavy_above_cnt = h_above
-                    heavy_below_cnt = h_below
+                            range_15m_hi = opn + ((high - opn) * 0.5)
+                            range_15m_lo = opn - ((opn - low) * 0.5)
+                            if ltp >= range_15m_hi:
+                                a_15 += 1
+                            elif ltp <= range_15m_lo:
+                                b_15 += 1
+
+                            sym_name = token_to_name.get(tok_id, "")
+                            if sym_name in target_heavy:
+                                if ltp >= opn:
+                                    h_above += 1
+                                else:
+                                    h_below += 1
+
+            if (a_o + b_o) > 0:
+                above_open = a_o
+                below_open = b_o
+                above_15m_high = a_15
+                below_15m_low = b_15
+                heavy_above_cnt = h_above
+                heavy_below_cnt = h_below
         except Exception:
             pass
 
@@ -684,10 +693,10 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
     return above_open, below_open, open_sentiment, above_15m_high, below_15m_low, heavy_above_cnt, heavy_below_cnt
 
 # -------------------------------------------------------------
-# 8. LOCKED CHART GENERATION (Always Renders Scaffold)
+# 8. LOCKED CHART GENERATION
 # -------------------------------------------------------------
 def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price):
-    if not strikes:
+    if not strikes or (sum(pe_solid) + sum(ce_solid) == 0):
         return None
 
     pe_x = [s - 9 for s in strikes]
@@ -726,7 +735,7 @@ def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     straddle_arr = np.array(put_prices) + np.array(call_prices)
     vol_arr = np.array(volumes)
     straddle_vwap_arr = np.cumsum(straddle_arr * vol_arr) / np.cumsum(vol_arr)
-    straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2))
+    straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2)) if len(straddle_arr) >= 12 else float(np.round(np.mean(straddle_arr), 2))
     delta_force = np.convolve(np.random.randn(len(times_dt)) * 1.8, np.ones(3)/3, mode='same')
     cvd_line = np.cumsum(delta_force * 50)
     ts_dots_put = np.full(len(times_dt), np.nan)
@@ -795,7 +804,7 @@ oi_chart_box = st.empty()
 chart_box = st.empty()
 table_box = st.empty()
 
-# Dynamic History Buffers
+# Dynamic Buffers
 base_t = get_current_ist()
 if "live_candle_buffer" not in st.session_state:
     st.session_state.live_candle_buffer = {
@@ -1035,7 +1044,7 @@ while True:
     )
     breadth_box.markdown(breadth_html, unsafe_allow_html=True)
 
-    # 3. 7 Quant Institutional Edge Checkpoints (Strict Single-Line HTML with no raw text leakage)
+    # 3. 7 Quant Institutional Edge Checkpoints
     checkpoints_html = (
         '<div class="checkpoint-container">'
         '<div style="font-size:15px; font-weight:800; color:#58a6ff; margin-bottom:8px;">🎯 7 Institutional Edge Checkpoints</div>'
