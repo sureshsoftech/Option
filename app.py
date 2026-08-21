@@ -215,9 +215,13 @@ NIFTY_50_SYMBOLS = [
 def load_all_scrip_masters():
     url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
     try:
-        res = requests.get(url, timeout=12)
+        # This file is large (30-50MB) — Streamlit Cloud's shared CPU/network
+        # can need well over 12s to pull and parse it. A short timeout was
+        # the actual cause of "Scrip master FAILED to load".
+        res = requests.get(url, timeout=45, stream=True)
         if res.status_code == 200:
-            df = pd.DataFrame(res.json())
+            raw_bytes = res.content  # force full download before parsing
+            df = pd.DataFrame(json.loads(raw_bytes))
 
             nifty_options = df[(df["name"] == "NIFTY") & (df["exch_seg"] == "NFO")].copy()
             nifty_options["strike"] = pd.to_numeric(nifty_options["strike"], errors="coerce") / 100.0
@@ -225,13 +229,15 @@ def load_all_scrip_masters():
             n50_equities = df[(df["exch_seg"] == "NSE") & (df["symbol"].str.endswith("-EQ")) & (df["name"].isin(NIFTY_50_SYMBOLS))].copy()
             n50_df = n50_equities.drop_duplicates(subset=["name"]).head(50)
 
-            return nifty_options, n50_df
-    except Exception:
-        pass
-    return None, None
+            return nifty_options, n50_df, None
+        else:
+            return None, None, f"HTTP {res.status_code} from scrip master URL"
+    except Exception as e:
+        return None, None, f"{type(e).__name__}: {e}"
+    return None, None, "Unknown failure"
 
 
-scrip_df, nifty50_df = load_all_scrip_masters()
+scrip_df, nifty50_df, scrip_load_error = load_all_scrip_masters()
 
 # -------------------------------------------------------------
 # 5. DATA RETRIEVAL & MARKET SNAPSHOT
@@ -693,9 +699,14 @@ diag_box = st.empty()
 
 # Diagnostic line: makes silent auth / scrip-master failures visible instead
 # of just showing zeros with no explanation.
-_scrip_status = "✅ Scrip master loaded" if (scrip_df is not None and not scrip_df.empty) else "❌ Scrip master FAILED to load (option chain will stay at 0)"
+_scrip_status = "✅ Scrip master loaded" if (scrip_df is not None and not scrip_df.empty) else f"❌ Scrip master FAILED — {scrip_load_error}"
 _auth_status = "✅ Angel One session active" if smart_api else f"❌ Angel One NOT connected — {auth_log}"
 diag_box.caption(f"{_auth_status}  |  {_scrip_status}")
+
+if scrip_df is None or scrip_df.empty:
+    if st.button("🔄 Retry scrip master download"):
+        load_all_scrip_masters.clear()
+        st.rerun()
 
 if "state_ready" not in st.session_state:
     base_t = get_current_ist()
@@ -913,7 +924,7 @@ def _live_dashboard_body():
     # -----------------------------------------------------
     # 12. FAST IN-PLACE DOM UPDATES (unique keys avoid stale widgets)
     # -----------------------------------------------------
-    atm_header_box.markdown(f"""
+    atm_header_html = f"""
     <div class="top-price-box">
         <div class="top-price-row">
             <span class="val-badge-neutral">NIFTY {nifty_spot:.2f}</span>
@@ -925,39 +936,49 @@ def _live_dashboard_body():
             <span class="val-badge-put">PUT ₹{new_put:.2f}</span>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    if st.session_state.get("_last_header_html") != atm_header_html:
+        st.session_state["_last_header_html"] = atm_header_html
+        atm_header_box.markdown(atm_header_html, unsafe_allow_html=True)
 
     ab_op, bl_op, op_sent, ab_15, bl_15, h_above_cnt, h_below_cnt = st.session_state.last_n50_breadth
 
-    buy_class = "num-box-buy-highlight" if ab_op >= 35 else "num-box-buy"
-    sell_class = "num-box-sell-highlight" if bl_op >= 35 else "num-box-sell"
+    # Breadth data only actually changes every ~10s (see fetch cadence
+    # above). Rewriting the same HTML into the DOM every 1s tick was
+    # part of the visible flicker — only touch it when the numbers change.
+    _breadth_snapshot = (ab_op, bl_op, op_sent, ab_15, bl_15, h_above_cnt, h_below_cnt)
+    if st.session_state.get("_last_breadth_snapshot") != _breadth_snapshot:
+        st.session_state["_last_breadth_snapshot"] = _breadth_snapshot
 
-    breadth_html = (
-        '<div class="checkpoint-container">'
-        '<div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:12px;">🏛️ Nifty 50 Equities Breadth Engine (Live 10s Stream)</div>'
-        '<div class="breadth-flex-row">'
-        '<span class="breadth-label">Above Open:</span>'
-        f'<span class="{buy_class}">{ab_op}</span>'
-        f'<span class="{sell_class}">{bl_op}</span>'
-        '<span class="breadth-label">Below Open</span>'
-        f'<div style="margin-left: auto;">{get_status_badge_html(op_sent)}</div>'
-        '</div>'
-        '<div class="breadth-flex-row">'
-        '<span class="breadth-label">Above 15m High:</span>'
-        f'<span class="num-box-buy">{ab_15}</span>'
-        f'<span class="num-box-sell">{bl_15}</span>'
-        '<span class="breadth-label">Below 15m Low</span>'
-        '</div>'
-        '<div class="breadth-flex-row" style="gap: 14px; padding-top: 10px;">'
-        '<span class="breadth-label">Top Weightage:</span>'
-        f'<span class="heavy-box-green">{h_above_cnt}</span>'
-        f'<span class="heavy-box-red">{h_below_cnt}</span>'
-        '</div>'
-        '</div>'
-    )
-    breadth_box.markdown(breadth_html, unsafe_allow_html=True)
+        buy_class = "num-box-buy-highlight" if ab_op >= 35 else "num-box-buy"
+        sell_class = "num-box-sell-highlight" if bl_op >= 35 else "num-box-sell"
 
-    checkpoints_box.markdown(f"""
+        breadth_html = (
+            '<div class="checkpoint-container">'
+            '<div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:12px;">🏛️ Nifty 50 Equities Breadth Engine (Live 10s Stream)</div>'
+            '<div class="breadth-flex-row">'
+            '<span class="breadth-label">Above Open:</span>'
+            f'<span class="{buy_class}">{ab_op}</span>'
+            f'<span class="{sell_class}">{bl_op}</span>'
+            '<span class="breadth-label">Below Open</span>'
+            f'<div style="margin-left: auto;">{get_status_badge_html(op_sent)}</div>'
+            '</div>'
+            '<div class="breadth-flex-row">'
+            '<span class="breadth-label">Above 15m High:</span>'
+            f'<span class="num-box-buy">{ab_15}</span>'
+            f'<span class="num-box-sell">{bl_15}</span>'
+            '<span class="breadth-label">Below 15m Low</span>'
+            '</div>'
+            '<div class="breadth-flex-row" style="gap: 14px; padding-top: 10px;">'
+            '<span class="breadth-label">Top Weightage:</span>'
+            f'<span class="heavy-box-green">{h_above_cnt}</span>'
+            f'<span class="heavy-box-red">{h_below_cnt}</span>'
+            '</div>'
+            '</div>'
+        )
+        breadth_box.markdown(breadth_html, unsafe_allow_html=True)
+
+    checkpoints_html = f"""
     <div class="checkpoint-container">
         <div style="font-size:15px; font-weight:800; color:#58a6ff; margin-bottom:8px;">🎯 7 Institutional Edge Checkpoints</div>
         <div class="checkpoint-row"><div>1. Multi-Strike Unwinding Filter</div><div style="display:flex; align-items:center;"><span class="cp-val-text">{cp1_val}</span> {get_status_badge_html(cp1_status)}</div></div>
@@ -968,9 +989,13 @@ def _live_dashboard_body():
         <div class="checkpoint-row"><div>6. Expiry Day Max Pain Pinning Guard</div><div style="display:flex; align-items:center;"><span class="cp-val-text">{cp6_val}</span> {get_status_badge_html(cp6_status)}</div></div>
         <div class="checkpoint-row"><div>7. IV Skew & Volatility Alignment</div><div style="display:flex; align-items:center;"><span class="cp-val-text">{cp7_val}</span> {get_status_badge_html(cp7_status)}</div></div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    # Same idea as breadth: only touch the DOM if a value actually changed.
+    if st.session_state.get("_last_checkpoints_html") != checkpoints_html:
+        st.session_state["_last_checkpoints_html"] = checkpoints_html
+        checkpoints_box.markdown(checkpoints_html, unsafe_allow_html=True)
 
-    metrics_box.markdown(f"""
+    metrics_html = f"""
     <div class="metric-grid">
         <div class="metric-card status-bearish">PUT POC: ₹{put_poc:.2f}</div>
         <div class="metric-card status-bullish">CALL POC: ₹{call_poc:.2f}</div>
@@ -980,13 +1005,16 @@ def _live_dashboard_body():
         <div class="metric-card {market_class}">MARKET: {market_status}</div>
         <div class="metric-card status-info">{unwinding_status}</div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    if st.session_state.get("_last_metrics_html") != metrics_html:
+        st.session_state["_last_metrics_html"] = metrics_html
+        metrics_box.markdown(metrics_html, unsafe_allow_html=True)
 
     vix_badge_color = "#00ff7f" if live_vix_chg >= 0 else "#ff4d4d"
     ce_chg_display = f"{total_ce_oi/100000:+.2f}L"
     pe_chg_display = f"{total_pe_oi/100000:+.2f}L"
 
-    oi_summary_box.markdown(f"""
+    oi_summary_html = f"""
     <div class="oi-summary-card">
         <div class="oi-item">INDIAVIX: <span style="color:{vix_badge_color};">{live_vix:.2f} ({live_vix_chg:+.2f})</span></div>
         <div class="oi-item">PCR: <span class="pcr-badge">{live_pcr:.2f}</span></div>
@@ -994,7 +1022,10 @@ def _live_dashboard_body():
         <div class="oi-item">Put Total OI: <span class="oi-put-val">{pe_chg_display}</span></div>
         <div class="oi-item">NIFTY Spot: <b>{nifty_spot:.2f}</b></div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    if st.session_state.get("_last_oi_summary_html") != oi_summary_html:
+        st.session_state["_last_oi_summary_html"] = oi_summary_html
+        oi_summary_box.markdown(oi_summary_html, unsafe_allow_html=True)
 
     live_time_label = f"🔴 LIVE ({current_time_ist.strftime('%I:%M:%S %p')})" if market_active else f"⏸️ CLOSED ({current_time_ist.strftime('%I:%M:%S %p')})"
     table_rows = [{
