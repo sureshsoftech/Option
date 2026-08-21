@@ -349,7 +349,7 @@ class AngelDirectClient:
         url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/order/v1/getLtpData"
         payload = {"exchange": exchange, "tradingsymbol": tradingsymbol, "symboltoken": str(symboltoken)}
         try:
-            r = requests.post(url, headers=self.headers, json=payload, timeout=5)
+            r = requests.post(url, headers=self.headers, json=payload, timeout=4)
             return r.json()
         except Exception as e:
             return {"status": False, "message": str(e)}
@@ -361,7 +361,7 @@ class AngelDirectClient:
             sanitized_dict[exch] = [str(x) for x in t_list]
         payload = {"mode": mode, "exchangeTokens": sanitized_dict}
         try:
-            r = requests.post(url, headers=self.headers, json=payload, timeout=8)
+            r = requests.post(url, headers=self.headers, json=payload, timeout=5)
             return r.json()
         except Exception as e:
             return {"status": False, "message": str(e)}
@@ -389,7 +389,7 @@ def authenticate_angel():
             "X-PrivateKey": api_key
         }
         payload = {"clientcode": client_code, "password": pin, "totp": totp_val}
-        res = requests.post(login_url, headers=headers, json=payload, timeout=8)
+        res = requests.post(login_url, headers=headers, json=payload, timeout=6)
         data = res.json()
 
         if data.get("status") and "data" in data and "jwtToken" in data["data"]:
@@ -556,7 +556,7 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
 
                 all_tokens = [str(x) for x in list(target_ce["token"].values) + list(target_pe["token"].values)]
                 
-                # Single 42-token batch fetch adhering to 50-token rate limit
+                # Single batch query to Angel One
                 res = _api.getMarketData("FULL", {"NFO": all_tokens})
                 if res and res.get("status") and "fetched" in res.get("data", {}):
                     fetched_items = {str(itm.get("symbolToken", itm.get("token", ""))): itm for itm in res["data"]["fetched"]}
@@ -642,7 +642,7 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
             tokens_list = [str(t) for t in list(n50_df["token"].values)[:50]]
             token_to_name = {str(row["token"]): row["name"] for _, row in n50_df.iterrows()}
             
-            # Fetch all 50 in 1 single request (Within Angel One 50-token 1-RPS limit)
+            # Fetch all 50 in 1 single request
             quote_res = _api.getMarketData("OHLC", {"NSE": tokens_list})
             
             if quote_res and quote_res.get("status") and "fetched" in quote_res.get("data", {}):
@@ -691,11 +691,17 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
     return above_open, below_open, open_sentiment, above_15m_high, below_15m_low, heavy_above_cnt, heavy_below_cnt
 
 # -------------------------------------------------------------
-# 8. LOCKED CHART GENERATION (Fixed Axes)
+# 8. LOCKED CHART GENERATION (Always Renders Scaffold)
 # -------------------------------------------------------------
 def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price):
-    if not strikes or (sum(pe_solid) + sum(ce_solid) == 0):
-        return None
+    if not strikes:
+        strikes = [24000 + (i * 50) for i in range(-10, 11)]
+        pe_solid = [0] * 21
+        pe_crossed = [0] * 21
+        pe_hollow = [0] * 21
+        ce_solid = [0] * 21
+        ce_crossed = [0] * 21
+        ce_hollow = [0] * 21
 
     pe_x = [s - 9 for s in strikes]
     ce_x = [s + 9 for s in strikes]
@@ -725,12 +731,12 @@ def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_cross
 
 def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     times_str = [t.strftime("%I:%M %p") for t in times_dt]
-    put_poc = float(np.round(np.average(put_prices, weights=volumes), 2))
-    call_poc = float(np.round(np.average(call_prices, weights=volumes), 2))
+    put_poc = float(np.round(np.average(put_prices, weights=volumes), 2)) if sum(volumes) > 0 else (put_prices[-1] if len(put_prices) > 0 else 85.0)
+    call_poc = float(np.round(np.average(call_prices, weights=volumes), 2)) if sum(volumes) > 0 else (call_prices[-1] if len(call_prices) > 0 else 80.0)
     straddle_arr = np.array(put_prices) + np.array(call_prices)
     vol_arr = np.array(volumes)
-    straddle_vwap_arr = np.cumsum(straddle_arr * vol_arr) / np.cumsum(vol_arr)
-    straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2))
+    straddle_vwap_arr = np.cumsum(straddle_arr * vol_arr) / np.cumsum(vol_arr) if sum(volumes) > 0 else straddle_arr
+    straddle_tloc = float(np.round(np.mean(straddle_arr[:12]), 2)) if len(straddle_arr) >= 12 else float(np.round(np.mean(straddle_arr), 2))
     delta_force = np.convolve(np.random.randn(len(times_dt)) * 1.8, np.ones(3)/3, mode='same')
     cvd_line = np.cumsum(delta_force * 50)
     ts_dots_put = np.full(len(times_dt), np.nan)
@@ -751,14 +757,14 @@ def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     )
     fig_scalp.add_trace(go.Scatter(x=times_str, y=put_prices, name="PUT CMP", line=dict(color="#ff4d4d", width=2)), row=1, col=1)
     fig_scalp.add_trace(go.Scatter(x=times_str, y=call_prices, name="CALL CMP", line=dict(color="#00ff7f", width=2)), row=1, col=1)
-    fig_scalp.add_hline(y=put_poc, line_dash="dash", line_color="#ff9999", annotation_text=f"PUT POC ({put_poc})", row=1, col=1)
-    fig_scalp.add_hline(y=call_poc, line_dash="dash", line_color="#99ff99", annotation_text=f"CALL POC ({call_poc})", row=1, col=1)
+    fig_scalp.add_hline(y=put_poc, line_dash="dash", line_color="#ff9999", annotation_text=f"PUT POC ({put_poc:.2f})", row=1, col=1)
+    fig_scalp.add_hline(y=call_poc, line_dash="dash", line_color="#99ff99", annotation_text=f"CALL POC ({call_poc:.2f})", row=1, col=1)
     fig_scalp.add_trace(go.Scatter(x=times_str, y=ts_dots_put, mode="markers", marker=dict(color="#00ff00", size=8, symbol="circle"), name="TS PE Trigger"), row=1, col=1)
     fig_scalp.add_trace(go.Scatter(x=times_str, y=ts_dots_call, mode="markers", marker=dict(color="#00ff7f", size=8, symbol="diamond"), name="TS CE Trigger"), row=1, col=1)
 
     fig_scalp.add_trace(go.Scatter(x=times_str, y=straddle_arr, name="Straddle (CE+PE)", line=dict(color="#ffa500", width=1.5)), row=2, col=1)
     fig_scalp.add_trace(go.Scatter(x=times_str, y=straddle_vwap_arr, name="Straddle VWAP", line=dict(color="#ffff00", dash="dot", width=1.5)), row=2, col=1)
-    fig_scalp.add_hline(y=straddle_tloc, line_dash="dash", line_color="#ff4444", annotation_text=f"TLOC ({straddle_tloc})", row=2, col=1)
+    fig_scalp.add_hline(y=straddle_tloc, line_dash="dash", line_color="#ff4444", annotation_text=f"TLOC ({straddle_tloc:.2f})", row=2, col=1)
 
     bar_colors = np.where(delta_force >= 0, "#00ff7f", "#ff4d4d")
     fig_scalp.add_trace(go.Bar(x=times_str, y=delta_force, marker_color=bar_colors, name="SMI Delta"), row=3, col=1)
@@ -811,10 +817,10 @@ if "live_candle_buffer" not in st.session_state:
 
 if "matrix_history" not in st.session_state:
     st.session_state.matrix_history = [
-        {"Time": (base_t - timedelta(minutes=4)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else ("🟢 Call Buyers Strong" if live_cp > live_pp else "🟡 Imbalance Neutral")},
-        {"Time": (base_t - timedelta(minutes=3)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else ("🟢 Call Buyers Strong" if live_cp > live_pp else "🟡 Imbalance Neutral")},
-        {"Time": (base_t - timedelta(minutes=2)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else ("🟢 Call Buyers Strong" if live_cp > live_pp else "🟡 Imbalance Neutral")},
-        {"Time": (base_t - timedelta(minutes=1)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else ("🟢 Call Buyers Strong" if live_cp > live_pp else "🟡 Imbalance Neutral")},
+        {"Time": (base_t - timedelta(minutes=4)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else "🟢 Call Buyers Strong"},
+        {"Time": (base_t - timedelta(minutes=3)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else "🟢 Call Buyers Strong"},
+        {"Time": (base_t - timedelta(minutes=2)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else "🟢 Call Buyers Strong"},
+        {"Time": (base_t - timedelta(minutes=1)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else "🟢 Call Buyers Strong"},
     ]
 
 if "last_minute_recorded" not in st.session_state:
@@ -835,13 +841,12 @@ def get_status_badge_html(status_text):
         return '<span class="badge-neutral-tag">NEUTRAL</span>'
 
 # -------------------------------------------------------------
-# 10. INITIAL RENDERING
+# 10. INITIAL RENDERING (Always Display Full Scaffold)
 # -------------------------------------------------------------
 live_vix, live_vix_chg = get_live_india_vix(smart_api)
 
 initial_fig_oi = render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price)
-if initial_fig_oi:
-    oi_chart_box.plotly_chart(initial_fig_oi, key="init_oi_chart", config={"displayModeBar": False, "staticPlot": False})
+oi_chart_box.plotly_chart(initial_fig_oi, key="init_oi_chart", config={"displayModeBar": False, "staticPlot": False})
 
 times_dt = st.session_state.live_candle_buffer["times"]
 put_prices = st.session_state.live_candle_buffer["puts"]
@@ -853,7 +858,7 @@ chart_box.plotly_chart(initial_fig_scalp, key="init_scalp_chart", config={"displ
 
 cur_call_power = live_cp
 cur_put_power = live_pp
-sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > cur_call_power else ("🟢 Call Buyers Strong" if cur_call_power > cur_put_power else "🟡 Imbalance Neutral")
+sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > cur_call_power else "🟢 Call Buyers Strong"
 loop_tick = 0
 
 # -------------------------------------------------------------
@@ -876,7 +881,7 @@ while True:
         strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, live_pcr, total_ce_oi, total_pe_oi, is_live = fetch_live_oi_and_power(smart_api, scrip_df, atm_strike)
         cur_call_power = live_cp
         cur_put_power = live_pp
-        sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > cur_call_power else ("🟢 Call Buyers Strong" if cur_call_power > cur_put_power else "🟡 Imbalance Neutral")
+        sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > cur_call_power else "🟢 Call Buyers Strong"
 
         # 5-Second Breadth Scan with last known value retention
         if (current_timestamp - st.session_state.last_breadth_update_ts) >= 5:
@@ -911,8 +916,7 @@ while True:
             st.session_state.last_minute_recorded = current_time_ist.minute
 
             updated_fig_oi = render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price)
-            if updated_fig_oi:
-                oi_chart_box.plotly_chart(updated_fig_oi, key=f"oi_plot_{loop_tick}", config={"displayModeBar": False, "staticPlot": False})
+            oi_chart_box.plotly_chart(updated_fig_oi, key=f"oi_plot_{loop_tick}", config={"displayModeBar": False, "staticPlot": False})
 
             times_dt = st.session_state.live_candle_buffer["times"]
             put_prices = st.session_state.live_candle_buffer["puts"]
