@@ -689,6 +689,13 @@ oi_summary_box = st.empty()
 oi_chart_box = st.empty()
 chart_box = st.empty()
 table_box = st.empty()
+diag_box = st.empty()
+
+# Diagnostic line: makes silent auth / scrip-master failures visible instead
+# of just showing zeros with no explanation.
+_scrip_status = "✅ Scrip master loaded" if (scrip_df is not None and not scrip_df.empty) else "❌ Scrip master FAILED to load (option chain will stay at 0)"
+_auth_status = "✅ Angel One session active" if smart_api else f"❌ Angel One NOT connected — {auth_log}"
+diag_box.caption(f"{_auth_status}  |  {_scrip_status}")
 
 if "state_ready" not in st.session_state:
     base_t = get_current_ist()
@@ -747,6 +754,16 @@ if "state_ready" not in st.session_state:
 
 @st.fragment(run_every=1)
 def live_dashboard():
+    try:
+        _live_dashboard_body()
+    except Exception as e:
+        # A single failed tick (API hiccup, rate limit, transient network
+        # error) no longer takes the whole app down — it just shows a
+        # warning and retries on the next 1s tick.
+        st.warning(f"⚠️ Update skipped this tick: {e}")
+
+
+def _live_dashboard_body():
     st.session_state.loop_tick += 1
     loop_tick = st.session_state.loop_tick
     current_time_ist = get_current_ist()
@@ -799,7 +816,10 @@ def live_dashboard():
             st.session_state.last_minute_recorded = current_time_ist.minute
 
             updated_fig_oi = render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price)
-            oi_chart_box.plotly_chart(updated_fig_oi, key=f"oi_plot_{loop_tick}", config={"displayModeBar": False, "staticPlot": False})
+            # Static key -> Streamlit updates this chart's data in place
+            # instead of unmounting/remounting it, which is what caused the
+            # visible flicker/blink.
+            oi_chart_box.plotly_chart(updated_fig_oi, key="oi_plot", config={"displayModeBar": False, "staticPlot": False})
 
             times_dt = st.session_state.live_candle_buffer["times"]
             put_prices = st.session_state.live_candle_buffer["puts"]
@@ -808,7 +828,7 @@ def live_dashboard():
             power_hist = st.session_state.power_history_buffer
 
             updated_fig_scalp = render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike, power_hist)
-            chart_box.plotly_chart(updated_fig_scalp, key=f"scalp_plot_{loop_tick}", config={"displayModeBar": False, "staticPlot": False})
+            chart_box.plotly_chart(updated_fig_scalp, key="scalp_plot", config={"displayModeBar": False, "staticPlot": False})
     else:
         cur_call_power = live_cp
         cur_put_power = live_pp
@@ -1009,7 +1029,7 @@ if "init_charts_done" not in st.session_state:
     )
     oi_chart_box.plotly_chart(
         render_oi_chart(_init_strikes, _pe_s, _pe_c, _pe_h, _ce_s, _ce_c, _ce_h, _fut_price0),
-        key="init_oi_chart", config={"displayModeBar": False, "staticPlot": False}
+        key="oi_plot", config={"displayModeBar": False, "staticPlot": False}
     )
     chart_box.plotly_chart(
         render_scalp_chart(
@@ -1020,7 +1040,7 @@ if "init_charts_done" not in st.session_state:
             _atm_strike0,
             st.session_state.power_history_buffer
         ),
-        key="init_scalp_chart", config={"displayModeBar": False, "staticPlot": False}
+        key="scalp_plot", config={"displayModeBar": False, "staticPlot": False}
     )
     st.session_state.init_charts_done = True
 
