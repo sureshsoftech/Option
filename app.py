@@ -10,7 +10,7 @@ import json
 import time
 
 # -------------------------------------------------------------
-# 1. PAGE CONFIG & RESPONSIVE DARK THEME + THICK WHITE SCROLLBAR
+# 1. PAGE CONFIG & RESPONSIVE DARK THEME + NO-DIMMING CSS
 # -------------------------------------------------------------
 st.set_page_config(
     page_title="SHK TRADE LABS",
@@ -21,6 +21,20 @@ st.set_page_config(
 st.markdown("""
 <style>
     .stApp { background-color: #0b0e14; color: #ffffff; }
+
+    /* --- 100% KILL STREAMLIT FRAGMENT DIMMING & FLICKER --- */
+    [data-testid="stAppViewContainer"] [data-testid="stVerticalBlock"] {
+        opacity: 1 !important;
+        transition: none !important;
+    }
+    div[data-st-stale="true"], div[data-testid="stFragment"][data-st-stale="true"] {
+        opacity: 1 !important;
+        filter: none !important;
+    }
+    .stSpinner, [data-testid="stStatusWidget"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
 
     /* --- High-Visibility Thick White Scrollbar --- */
     ::-webkit-scrollbar {
@@ -269,11 +283,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# 2. BACKGROUND TAB KEEP-ALIVE WORKER (Prevents Sleep Disconnect)
+# 2. BACKGROUND TAB KEEP-ALIVE WORKER
 # -------------------------------------------------------------
 st.components.v1.html("""
 <script>
-    // Keeps WebSocket active when switching tabs
     setInterval(function() {
         window.dispatchEvent(new Event('focus'));
     }, 5000);
@@ -446,11 +459,11 @@ def parse_expiry_date(exp_str):
     return None
 
 def get_live_market_snapshot(_api, scrip_data):
-    nifty_spot = 24202.20
-    fut_price = 24252.75
+    nifty_spot = 24248.30
+    fut_price = 24298.20
     expiry_str = "WEEKLY"
-    call_ltp = 102.20
-    put_ltp = 89.20
+    call_ltp = 80.85
+    put_ltp = 86.40
     ce_token, pe_token = None, None
     ce_symbol, pe_symbol = "", ""
     
@@ -625,10 +638,10 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
 # 8. NIFTY 50 BREADTH & TOP 3 HEAVYWEIGHTS (2-BOX COUNTS)
 # -------------------------------------------------------------
 def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df):
-    above_open = 18
-    below_open = 32
-    above_15m_high = 6
-    below_15m_low = 18
+    above_open = 14
+    below_open = 34
+    above_15m_high = 11
+    below_15m_low = 24
     
     heavy_above_cnt = 1
     heavy_below_cnt = 2
@@ -775,14 +788,14 @@ def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     return fig_scalp
 
 # -------------------------------------------------------------
-# 10. SESSION STATE MEMORY PERSISTENCE
+# 10. SESSION STATE PERSISTENCE
 # -------------------------------------------------------------
 base_t = get_current_ist()
 if "live_candle_buffer" not in st.session_state:
     st.session_state.live_candle_buffer = {
         "times": [base_t - timedelta(minutes=i) for i in range(25, -1, -1)],
-        "calls": list(np.maximum(10.0, 102.20 + np.cumsum(np.random.randn(26) * 0.4))),
-        "puts": list(np.maximum(10.0, 89.20 + np.cumsum(np.random.randn(26) * 0.4))),
+        "calls": list(np.maximum(10.0, 80.85 + np.cumsum(np.random.randn(26) * 0.4))),
+        "puts": list(np.maximum(10.0, 86.40 + np.cumsum(np.random.randn(26) * 0.4))),
         "vols": list(np.random.randint(15000, 35000, size=26))
     }
 
@@ -812,14 +825,14 @@ def get_status_badge_html(status_text):
         return '<span class="badge-neutral-tag">NEUTRAL</span>'
 
 # -------------------------------------------------------------
-# 11. STATIC PAGE SHELL (Never Reloads Entire Browser)
+# 11. STATIC PAGE HEADER
 # -------------------------------------------------------------
 st.title("⚡ SHK TRADE LABS")
 conn_badge = "🟢 Angel One SmartAPI Feed (IST)" if smart_api else f"🟡 Feed Status: {auth_log}"
 st.caption(f"Session Status: {conn_badge}")
 
 # -------------------------------------------------------------
-# 12. STREAMLIT FRAGMENT ENGINE (IN-PLACE LIVE UPDATES)
+# 12. STREAMLIT FRAGMENT ENGINE (FLICKER-FREE LIVE STREAM)
 # -------------------------------------------------------------
 @st.fragment(run_every="2s")
 def live_dashboard_fragment():
@@ -1044,7 +1057,7 @@ def live_dashboard_fragment():
     </div>
     """, unsafe_allow_html=True)
 
-    # 6. Plots
+    # 6. Locked Plots
     updated_fig_oi = render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price)
     st.plotly_chart(updated_fig_oi, key="live_oi_plot", config={"displayModeBar": False, "staticPlot": False})
 
@@ -1070,5 +1083,5 @@ def live_dashboard_fragment():
 
     st.table(pd.DataFrame(table_rows))
 
-# Render Live Fragment
+# Execute In-Place Live Stream
 live_dashboard_fragment()
