@@ -191,100 +191,70 @@ st.markdown("""
         font-size: 13px;
     }
 
-    /* Touching Connected 2-Box System (Only Numbers Enlarged to 32px) */
+    /* Touching Connected 2-Box System (Exact 28px Font Size Across All 4 Rows) */
     .touch-box-group {
         display: inline-flex;
         flex-direction: row;
         align-items: center;
     }
-    .touch-left-darkgreen {
+    .touch-left-green-box {
         background-color: #000000;
-        color: #00ff7f;
+        color: #ffffff;
         border: 2.5px solid #008000;
         border-right: 1.5px solid #008000;
-        padding: 4px 18px;
+        padding: 4px 16px;
         border-top-left-radius: 8px;
         border-bottom-left-radius: 8px;
         font-weight: 900;
-        font-size: 32px;
+        font-size: 28px;
         text-align: center;
-        min-width: 60px;
+        min-width: 56px;
         line-height: 1.1;
     }
-    .touch-left-darkgreen-highlight {
+    .touch-left-green-highlight {
         background-color: #008000;
         color: #000000;
         border: 2.5px solid #008000;
         border-right: 1.5px solid #008000;
-        padding: 4px 18px;
+        padding: 4px 16px;
         border-top-left-radius: 8px;
         border-bottom-left-radius: 8px;
         font-weight: 900;
-        font-size: 32px;
+        font-size: 28px;
         text-align: center;
-        min-width: 60px;
+        min-width: 56px;
         line-height: 1.1;
     }
-    .touch-right-orange {
+    .touch-right-orange-box {
         background-color: #000000;
         color: #ffffff;
         border: 2.5px solid #ff9800;
         border-left: 1.5px solid #ff9800;
-        padding: 4px 18px;
+        padding: 4px 16px;
         border-top-right-radius: 8px;
         border-bottom-right-radius: 8px;
         font-weight: 900;
-        font-size: 32px;
+        font-size: 28px;
         text-align: center;
-        min-width: 60px;
+        min-width: 56px;
         line-height: 1.1;
     }
-    .touch-right-darkred-highlight {
+    .touch-right-orange-highlight {
         background-color: #8b0000;
         color: #ffffff;
         border: 2.5px solid #8b0000;
         border-left: 1.5px solid #8b0000;
-        padding: 4px 18px;
+        padding: 4px 16px;
         border-top-right-radius: 8px;
         border-bottom-right-radius: 8px;
         font-weight: 900;
-        font-size: 32px;
+        font-size: 28px;
         text-align: center;
-        min-width: 60px;
+        min-width: 56px;
         line-height: 1.1;
     }
 
-    /* Touching Weightage Boxes (White text inside, 32px font) */
-    .touch-left-weight-darkgreen {
-        background-color: #000000;
-        color: #ffffff;
-        border: 2.5px solid #008000;
-        border-right: 1.5px solid #008000;
-        padding: 4px 18px;
-        border-top-left-radius: 8px;
-        border-bottom-left-radius: 8px;
-        font-weight: 900;
-        font-size: 32px;
-        text-align: center;
-        min-width: 60px;
-        line-height: 1.1;
-    }
-    .touch-right-weight-orange {
-        background-color: #000000;
-        color: #ffffff;
-        border: 2.5px solid #ff9800;
-        border-left: 1.5px solid #ff9800;
-        padding: 4px 18px;
-        border-top-right-radius: 8px;
-        border-bottom-right-radius: 8px;
-        font-weight: 900;
-        font-size: 32px;
-        text-align: center;
-        min-width: 60px;
-        line-height: 1.1;
-    }
-
-    /* Live Buyer Row Styling */
+    /* Live Buyer Row Styling (Orange for Put Buyer) */
     .power-live-row {
         display: flex;
         flex-direction: row;
@@ -761,7 +731,8 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
         except Exception:
             pass
 
-    open_sentiment = "BULLISH" if above_open >= 35 else ("BEARISH" if below_open >= 35 else "NEUTRAL")
+    # Threshold condition: strictly greater than 34 (>34, i.e. >=35)
+    open_sentiment = "BULLISH" if above_open > 34 else ("BEARISH" if below_open > 34 else "NEUTRAL")
     return above_open, below_open, open_sentiment, above_15m_high, below_15m_low, heavy3_above, heavy3_below, heavy10_above, heavy10_below
 
 # -------------------------------------------------------------
@@ -1096,12 +1067,12 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # 2. Nifty Breadth with 32px Numbers & Standard 14px Labels
+    # 2. Nifty Breadth with 28px Numbers (Green Border on Left, Orange Border on Right for all 4 rows)
     ab_op, bl_op, op_sent, ab_15, bl_15, h3_a, h3_b, h10_a, h10_b = st.session_state.last_n50_breadth
     
-    # Conditional highlight: >= 35 gives Dark Green bg with Black text; right side >= 35 gives Dark Red bg with White text
-    buy_class = "touch-left-darkgreen-highlight" if ab_op >= 35 else "touch-left-darkgreen"
-    sell_class = "touch-right-darkred-highlight" if bl_op >= 35 else "touch-right-orange"
+    # Conditional highlight: >34 (i.e. >=35) gives Dark Green bg with Black text; right side >34 gives Dark Red bg with White text
+    buy_class = "touch-left-green-highlight" if ab_op > 34 else "touch-left-green-box"
+    sell_class = "touch-right-orange-highlight" if bl_op > 34 else "touch-right-orange-box"
 
     breadth_html = (
         '<div class="checkpoint-container">'
@@ -1120,8 +1091,8 @@ while True:
         '<div class="breadth-flex-row">'
         '<span class="breadth-label">15 min</span>'
         '<div class="touch-box-group">'
-        f'<span class="touch-left-darkgreen">{ab_15}</span>'
-        f'<span class="touch-right-orange">{bl_15}</span>'
+        f'<span class="touch-left-green-box">{ab_15}</span>'
+        f'<span class="touch-right-orange-box">{bl_15}</span>'
         '</div>'
         '</div>'
         
@@ -1129,8 +1100,8 @@ while True:
         '<div class="breadth-flex-row">'
         '<span class="breadth-label">3 weightage</span>'
         '<div class="touch-box-group">'
-        f'<span class="touch-left-weight-darkgreen">{h3_a}</span>'
-        f'<span class="touch-right-weight-orange">{h3_b}</span>'
+        f'<span class="touch-left-green-box">{h3_a}</span>'
+        f'<span class="touch-right-orange-box">{h3_b}</span>'
         '</div>'
         '</div>'
 
@@ -1138,12 +1109,12 @@ while True:
         '<div class="breadth-flex-row">'
         '<span class="breadth-label">10 weightage</span>'
         '<div class="touch-box-group">'
-        f'<span class="touch-left-weight-darkgreen">{h10_a}</span>'
-        f'<span class="touch-right-weight-orange">{h10_b}</span>'
+        f'<span class="touch-left-green-box">{h10_a}</span>'
+        f'<span class="touch-right-orange-box">{h10_b}</span>'
         '</div>'
         '</div>'
 
-        '<!-- Row 5: Call Buyer & Put Buyer Live Row with Strength -->'
+        '<!-- Row 5: Call Buyer & Put Buyer Live Row (Orange Put Buyer) -->'
         '<div class="power-live-row">'
         f'<span>Call Buyer: <span class="call-buyer-badge">{format_indian_number(cur_call_power)}</span></span>'
         f'<span>Put Buyer: <span class="put-buyer-badge">{format_indian_number(cur_put_power)}</span></span>'
