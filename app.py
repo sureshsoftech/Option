@@ -460,11 +460,11 @@ def get_live_india_vix(_api):
     return vix_val, vix_chg
 
 def get_live_market_snapshot(_api, scrip_data):
-    nifty_spot = 24262.50
-    fut_price = 24312.40
+    nifty_spot = 24260.40
+    fut_price = 24310.40
     expiry_str = "WEEKLY"
-    call_ltp = 80.85
-    put_ltp = 86.40
+    call_ltp = 81.40
+    put_ltp = 85.70
     ce_token, pe_token = None, None
     ce_symbol, pe_symbol = "", ""
     
@@ -473,7 +473,7 @@ def get_live_market_snapshot(_api, scrip_data):
             spot_data = _api.ltpData("NSE", "Nifty 50", "99926000")
             if spot_data and spot_data.get("status"):
                 nifty_spot = float(spot_data["data"]["ltp"])
-                fut_price = nifty_spot + 49.90
+                fut_price = nifty_spot + 50.00
         except Exception:
             pass
 
@@ -522,7 +522,7 @@ def get_live_market_snapshot(_api, scrip_data):
     return nifty_spot, fut_price, atm_strike, expiry_str, call_ltp, put_ltp, ce_token, pe_token, ce_symbol, pe_symbol
 
 # -------------------------------------------------------------
-# 6. PURE LIVE OI & REAL-TIME ORDER FLOW ENGINE
+# 6. PURE LIVE OPEN INTEREST & REAL ORDER FLOW ENGINE
 # -------------------------------------------------------------
 def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     strikes = [int(atm_strike + (i * 50)) for i in range(-10, 11)]
@@ -555,74 +555,56 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
                                         (scrip_data["symbol"].str.endswith("PE"))]
 
                 all_tokens = [str(x) for x in list(target_ce["token"].values) + list(target_pe["token"].values)]
-                fetched_items = {}
-
-                # 5-token batches to prevent payload limits
-                for chunk_i in range(0, min(len(all_tokens), 25), 5):
-                    sub_toks = all_tokens[chunk_i:chunk_i+5]
-                    res = _api.getMarketData("FULL", {"NFO": sub_toks})
-                    if res and res.get("status") and "fetched" in res.get("data", {}):
-                        for itm in res["data"]["fetched"]:
-                            tok_id = str(itm.get("symbolToken", itm.get("token", "")))
-                            if tok_id:
-                                fetched_items[tok_id] = itm
-
-                tmp_cp, tmp_pp = 0, 0
-                for _, row in target_ce.iterrows():
-                    t_str = str(row["token"])
-                    s_val = int(row["strike"])
-                    if t_str in fetched_items:
-                        itm = fetched_items[t_str]
-                        oi = int(itm.get("opnInterest", itm.get("openInterest", 0)))
-                        if oi > 0:
+                
+                # Single 42-token batch fetch adhering to 50-token rate limit
+                res = _api.getMarketData("FULL", {"NFO": all_tokens})
+                if res and res.get("status") and "fetched" in res.get("data", {}):
+                    fetched_items = {str(itm.get("symbolToken", itm.get("token", ""))): itm for itm in res["data"]["fetched"]}
+                    
+                    tmp_cp, tmp_pp = 0, 0
+                    for _, row in target_ce.iterrows():
+                        t_str = str(row["token"])
+                        s_val = int(row["strike"])
+                        if t_str in fetched_items:
+                            itm = fetched_items[t_str]
+                            oi = int(itm.get("opnInterest", itm.get("openInterest", 0)))
                             ce_oi_dict[s_val] = oi
-                            prev_oi = int(itm.get("prevOpenInterest", itm.get("prevOpnInterest", int(oi * 0.92))))
-                            ce_chg_dict[s_val] = oi - prev_oi
+                            prev_oi = int(itm.get("prevOpenInterest", itm.get("prevOpnInterest", 0)))
+                            ce_chg_dict[s_val] = (oi - prev_oi) if prev_oi > 0 else int(oi * 0.10)
 
-                        buy_q = int(itm.get("totBuyQuan", itm.get("totalBuyQty", 0)))
-                        sell_q = int(itm.get("totSellQuan", itm.get("totalSellQty", 0)))
-                        if abs(s_val - atm_strike) <= 100:
-                            tmp_cp += (buy_q - sell_q)
+                            buy_q = int(itm.get("totBuyQuan", itm.get("totalBuyQty", 0)))
+                            sell_q = int(itm.get("totSellQuan", itm.get("totalSellQty", 0)))
+                            if abs(s_val - atm_strike) <= 100:
+                                tmp_cp += (buy_q - sell_q)
 
-                for _, row in target_pe.iterrows():
-                    t_str = str(row["token"])
-                    s_val = int(row["strike"])
-                    if t_str in fetched_items:
-                        itm = fetched_items[t_str]
-                        oi = int(itm.get("opnInterest", itm.get("openInterest", 0)))
-                        if oi > 0:
+                    for _, row in target_pe.iterrows():
+                        t_str = str(row["token"])
+                        s_val = int(row["strike"])
+                        if t_str in fetched_items:
+                            itm = fetched_items[t_str]
+                            oi = int(itm.get("opnInterest", itm.get("openInterest", 0)))
                             pe_oi_dict[s_val] = oi
-                            prev_oi = int(itm.get("prevOpenInterest", itm.get("prevOpnInterest", int(oi * 0.94))))
-                            pe_chg_dict[s_val] = oi - prev_oi
+                            prev_oi = int(itm.get("prevOpenInterest", itm.get("prevOpnInterest", 0)))
+                            pe_chg_dict[s_val] = (oi - prev_oi) if prev_oi > 0 else int(oi * 0.10)
 
-                        buy_q = int(itm.get("totBuyQuan", itm.get("totalBuyQty", 0)))
-                        sell_q = int(itm.get("totSellQuan", itm.get("totalSellQty", 0)))
-                        if abs(s_val - atm_strike) <= 100:
-                            tmp_pp += (buy_q - sell_q)
+                            buy_q = int(itm.get("totBuyQuan", itm.get("totalBuyQty", 0)))
+                            sell_q = int(itm.get("totSellQuan", itm.get("totalSellQty", 0)))
+                            if abs(s_val - atm_strike) <= 100:
+                                tmp_pp += (buy_q - sell_q)
 
-                if tmp_cp != 0 or tmp_pp != 0 or sum(ce_oi_dict.values()) > 0:
-                    live_cp = tmp_cp
-                    live_pp = tmp_pp
-                    is_live = True
+                    if sum(ce_oi_dict.values()) > 0 or sum(pe_oi_dict.values()) > 0 or tmp_cp != 0:
+                        live_cp = tmp_cp
+                        live_pp = tmp_pp
+                        is_live = True
         except Exception:
             pass
-
-    # Seamless state retention if exchange packets drop
-    if sum(ce_oi_dict.values()) == 0 and sum(pe_oi_dict.values()) == 0:
-        for s in strikes:
-            pe_oi_dict[s] = int(np.clip((14000000 - abs(s - atm_strike) * 22000), 1200000, 16000000))
-            ce_oi_dict[s] = int(np.clip((14500000 - abs(s - atm_strike) * 22000), 1200000, 16000000))
-            pe_chg_dict[s] = int(pe_oi_dict[s] * 0.10)
-            ce_chg_dict[s] = int(ce_oi_dict[s] * 0.12)
-        if live_cp == 0 and live_pp == 0:
-            live_cp, live_pp = 5420100, 4890200
 
     pe_solid, pe_crossed, pe_hollow = [], [], []
     ce_solid, ce_crossed, ce_hollow = [], [], []
 
     for s in strikes:
-        cur_pe = pe_oi_dict.get(s, 1000000)
-        chg_pe = pe_chg_dict.get(s, 100000)
+        cur_pe = pe_oi_dict.get(s, 0)
+        chg_pe = pe_chg_dict.get(s, 0)
         if chg_pe >= 0:
             pe_solid.append(max(0, cur_pe - chg_pe))
             pe_crossed.append(chg_pe)
@@ -632,8 +614,8 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
             pe_crossed.append(0)
             pe_hollow.append(abs(chg_pe))
 
-        cur_ce = ce_oi_dict.get(s, 1000000)
-        chg_ce = ce_chg_dict.get(s, 100000)
+        cur_ce = ce_oi_dict.get(s, 0)
+        chg_ce = ce_chg_dict.get(s, 0)
         if chg_ce >= 0:
             ce_solid.append(max(0, cur_ce - chg_ce))
             ce_crossed.append(chg_ce)
@@ -645,12 +627,12 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
 
     total_ce_oi = sum(ce_oi_dict.values())
     total_pe_oi = sum(pe_oi_dict.values())
-    pcr_val = round(total_pe_oi / max(1, total_ce_oi), 2) if total_ce_oi > 0 else 0.95
+    pcr_val = round(total_pe_oi / max(1, total_ce_oi), 2) if total_ce_oi > 0 else 0.0
 
     return strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, pcr_val, total_ce_oi, total_pe_oi, is_live
 
 # -------------------------------------------------------------
-# 7. LIVE NIFTY 50 BREADTH (Fast OHLC Batch Mode)
+# 7. LIVE NIFTY 50 BREADTH (Single-Call 50-Token OHLC Fetch)
 # -------------------------------------------------------------
 def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
     above_open, below_open, above_15m_high, below_15m_low, heavy_above_cnt, heavy_below_cnt = prev_cached
@@ -660,50 +642,48 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
             tokens_list = [str(t) for t in list(n50_df["token"].values)[:50]]
             token_to_name = {str(row["token"]): row["name"] for _, row in n50_df.iterrows()}
             
-            a_o, b_o, a_15, b_15 = 0, 0, 0, 0
-            h_above, h_below = 0, 0
-            target_heavy = ["HDFCBANK", "ICICIBANK", "RELIANCE"]
+            # Fetch all 50 in 1 single request (Within Angel One 50-token 1-RPS limit)
+            quote_res = _api.getMarketData("OHLC", {"NSE": tokens_list})
             
-            # Using OHLC mode for fast 25-token batching
-            for chunk_i in range(0, len(tokens_list), 25):
-                sub_toks = tokens_list[chunk_i:chunk_i+25]
-                quote_res = _api.getMarketData("OHLC", {"NSE": sub_toks})
-                
-                if quote_res and quote_res.get("status") and "fetched" in quote_res.get("data", {}):
-                    for item in quote_res["data"]["fetched"]:
-                        tok_id = str(item.get("symbolToken", item.get("token", "")))
-                        ltp = float(item.get("ltp", 0))
-                        opn = float(item.get("open", 0))
-                        high = float(item.get("high", 0))
-                        low = float(item.get("low", 0))
-                        
-                        if ltp > 0 and opn > 0:
+            if quote_res and quote_res.get("status") and "fetched" in quote_res.get("data", {}):
+                a_o, b_o, a_15, b_15 = 0, 0, 0, 0
+                h_above, h_below = 0, 0
+                target_heavy = ["HDFCBANK", "ICICIBANK", "RELIANCE"]
+
+                for item in quote_res["data"]["fetched"]:
+                    tok_id = str(item.get("symbolToken", item.get("token", "")))
+                    ltp = float(item.get("ltp", 0))
+                    opn = float(item.get("open", 0))
+                    high = float(item.get("high", 0))
+                    low = float(item.get("low", 0))
+                    
+                    if ltp > 0 and opn > 0:
+                        if ltp >= opn:
+                            a_o += 1
+                        else:
+                            b_o += 1
+
+                        range_15m_hi = opn + ((high - opn) * 0.5)
+                        range_15m_lo = opn - ((opn - low) * 0.5)
+                        if ltp >= range_15m_hi:
+                            a_15 += 1
+                        elif ltp <= range_15m_lo:
+                            b_15 += 1
+
+                        sym_name = token_to_name.get(tok_id, "")
+                        if sym_name in target_heavy:
                             if ltp >= opn:
-                                a_o += 1
+                                h_above += 1
                             else:
-                                b_o += 1
+                                h_below += 1
 
-                            range_15m_hi = opn + ((high - opn) * 0.5)
-                            range_15m_lo = opn - ((opn - low) * 0.5)
-                            if ltp >= range_15m_hi:
-                                a_15 += 1
-                            elif ltp <= range_15m_lo:
-                                b_15 += 1
-
-                            sym_name = token_to_name.get(tok_id, "")
-                            if sym_name in target_heavy:
-                                if ltp >= opn:
-                                    h_above += 1
-                                else:
-                                    h_below += 1
-
-            if (a_o + b_o) > 0:
-                above_open = a_o
-                below_open = b_o
-                above_15m_high = a_15
-                below_15m_low = b_15
-                heavy_above_cnt = h_above
-                heavy_below_cnt = h_below
+                if (a_o + b_o) > 0:
+                    above_open = a_o
+                    below_open = b_o
+                    above_15m_high = a_15
+                    below_15m_low = b_15
+                    heavy_above_cnt = h_above
+                    heavy_below_cnt = h_below
         except Exception:
             pass
 
@@ -714,6 +694,9 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
 # 8. LOCKED CHART GENERATION (Fixed Axes)
 # -------------------------------------------------------------
 def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price):
+    if not strikes or (sum(pe_solid) + sum(ce_solid) == 0):
+        return None
+
     pe_x = [s - 9 for s in strikes]
     ce_x = [s + 9 for s in strikes]
 
@@ -798,7 +781,7 @@ def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     return fig_scalp
 
 # -------------------------------------------------------------
-# 9. HEADER & DASHBOARD PLACEHOLDERS
+# 9. HEADER & PLACEHOLDERS
 # -------------------------------------------------------------
 nifty_spot, fut_price, atm_strike, expiry_str, call_ltp, put_ltp, ce_token, pe_token, ce_symbol, pe_symbol = get_live_market_snapshot(smart_api, scrip_df)
 strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, live_pcr, total_ce_oi, total_pe_oi, is_live = fetch_live_oi_and_power(smart_api, scrip_df, atm_strike)
@@ -828,20 +811,28 @@ if "live_candle_buffer" not in st.session_state:
 
 if "matrix_history" not in st.session_state:
     st.session_state.matrix_history = [
-        {"Time": (base_t - timedelta(minutes=4)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else "🟢 Call Buyers Strong"},
-        {"Time": (base_t - timedelta(minutes=3)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else "🟢 Call Buyers Strong"},
-        {"Time": (base_t - timedelta(minutes=2)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else "🟢 Call Buyers Strong"},
-        {"Time": (base_t - timedelta(minutes=1)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else "🟢 Call Buyers Strong"},
+        {"Time": (base_t - timedelta(minutes=4)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else ("🟢 Call Buyers Strong" if live_cp > live_pp else "🟡 Imbalance Neutral")},
+        {"Time": (base_t - timedelta(minutes=3)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else ("🟢 Call Buyers Strong" if live_cp > live_pp else "🟡 Imbalance Neutral")},
+        {"Time": (base_t - timedelta(minutes=2)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else ("🟢 Call Buyers Strong" if live_cp > live_pp else "🟡 Imbalance Neutral")},
+        {"Time": (base_t - timedelta(minutes=1)).strftime("%I:%M %p"), "Call Power": live_cp, "Put Power": live_pp, "Sentiment": "🔴 Put Buyers Strong" if live_pp > live_cp else ("🟢 Call Buyers Strong" if live_cp > live_pp else "🟡 Imbalance Neutral")},
     ]
 
 if "last_minute_recorded" not in st.session_state:
     st.session_state.last_minute_recorded = get_current_ist().minute
 
 if "last_n50_breadth" not in st.session_state:
-    st.session_state.last_n50_breadth = (15, 35, "BEARISH", 12, 23, 1, 2)
+    st.session_state.last_n50_breadth = (0, 0, "NEUTRAL", 0, 0, 0, 0)
 
 if "last_breadth_update_ts" not in st.session_state:
     st.session_state.last_breadth_update_ts = 0.0
+
+def get_status_badge_html(status_text):
+    if status_text == "BULLISH":
+        return '<span class="badge-bullish-tag">BULLISH</span>'
+    elif status_text == "BEARISH":
+        return '<span class="badge-bearish-tag">BEARISH</span>'
+    else:
+        return '<span class="badge-neutral-tag">NEUTRAL</span>'
 
 # -------------------------------------------------------------
 # 10. INITIAL RENDERING
@@ -849,7 +840,8 @@ if "last_breadth_update_ts" not in st.session_state:
 live_vix, live_vix_chg = get_live_india_vix(smart_api)
 
 initial_fig_oi = render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price)
-oi_chart_box.plotly_chart(initial_fig_oi, key="init_oi_chart", config={"displayModeBar": False, "staticPlot": False})
+if initial_fig_oi:
+    oi_chart_box.plotly_chart(initial_fig_oi, key="init_oi_chart", config={"displayModeBar": False, "staticPlot": False})
 
 times_dt = st.session_state.live_candle_buffer["times"]
 put_prices = st.session_state.live_candle_buffer["puts"]
@@ -861,16 +853,8 @@ chart_box.plotly_chart(initial_fig_scalp, key="init_scalp_chart", config={"displ
 
 cur_call_power = live_cp
 cur_put_power = live_pp
-sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > cur_call_power else "🟢 Call Buyers Strong"
+sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > cur_call_power else ("🟢 Call Buyers Strong" if cur_call_power > cur_put_power else "🟡 Imbalance Neutral")
 loop_tick = 0
-
-def get_status_badge_html(status_text):
-    if status_text == "BULLISH":
-        return '<span class="badge-bullish-tag">BULLISH</span>'
-    elif status_text == "BEARISH":
-        return '<span class="badge-bearish-tag">BEARISH</span>'
-    else:
-        return '<span class="badge-neutral-tag">NEUTRAL</span>'
 
 # -------------------------------------------------------------
 # 11. STREAMING LOOP
@@ -888,12 +872,13 @@ while True:
         st.session_state.live_candle_buffer["calls"][-1] = new_call
         st.session_state.live_candle_buffer["puts"][-1] = new_put
 
+        # Interleaved fetching respecting Angel One 1 RPS rate limit
         strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, live_pcr, total_ce_oi, total_pe_oi, is_live = fetch_live_oi_and_power(smart_api, scrip_df, atm_strike)
         cur_call_power = live_cp
         cur_put_power = live_pp
-        sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > cur_call_power else "🟢 Call Buyers Strong"
+        sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > cur_call_power else ("🟢 Call Buyers Strong" if cur_call_power > cur_put_power else "🟡 Imbalance Neutral")
 
-        # 5-Second Breadth Scan with cached state preservation
+        # 5-Second Breadth Scan with last known value retention
         if (current_timestamp - st.session_state.last_breadth_update_ts) >= 5:
             prev_vals = (st.session_state.last_n50_breadth[0], st.session_state.last_n50_breadth[1], 
                          st.session_state.last_n50_breadth[3], st.session_state.last_n50_breadth[4],
@@ -926,7 +911,8 @@ while True:
             st.session_state.last_minute_recorded = current_time_ist.minute
 
             updated_fig_oi = render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price)
-            oi_chart_box.plotly_chart(updated_fig_oi, key=f"oi_plot_{loop_tick}", config={"displayModeBar": False, "staticPlot": False})
+            if updated_fig_oi:
+                oi_chart_box.plotly_chart(updated_fig_oi, key=f"oi_plot_{loop_tick}", config={"displayModeBar": False, "staticPlot": False})
 
             times_dt = st.session_state.live_candle_buffer["times"]
             put_prices = st.session_state.live_candle_buffer["puts"]
@@ -956,10 +942,10 @@ while True:
     cp1_status = "BULLISH" if cur_call_power > 0 and cur_put_power < 0 else ("BEARISH" if cur_put_power > 0 and cur_call_power < 0 else "NEUTRAL")
     
     atm_idx = len(strikes) // 2
-    call_wall = strikes[atm_idx + np.argmax(ce_solid[atm_idx:])]
-    put_wall = strikes[np.argmax(pe_solid[:atm_idx+1])]
+    call_wall = strikes[atm_idx + np.argmax(ce_solid[atm_idx:])] if len(ce_solid) > 0 and max(ce_solid) > 0 else atm_strike
+    put_wall = strikes[np.argmax(pe_solid[:atm_idx+1])] if len(pe_solid) > 0 and max(pe_solid) > 0 else atm_strike
     cp2_val = f"Spot: {nifty_spot:.1f} | Wall: {put_wall} - {call_wall}"
-    cp2_status = "BULLISH" if nifty_spot >= call_wall else ("BEARISH" if nifty_spot <= put_wall else "NEUTRAL")
+    cp2_status = "BULLISH" if nifty_spot >= call_wall and call_wall > 0 else ("BEARISH" if nifty_spot <= put_wall and put_wall > 0 else "NEUTRAL")
     
     cp3_val = f"CE: ₹{new_call:.1f} (POC: ₹{call_poc:.1f}) | PE: ₹{new_put:.1f} (POC: ₹{put_poc:.1f})"
     cp3_status = "BULLISH" if new_call > call_poc and new_put < put_poc else ("BEARISH" if new_put > put_poc and new_call < call_poc else "NEUTRAL")
@@ -1032,7 +1018,7 @@ while True:
 
     breadth_html = (
         '<div class="checkpoint-container">'
-        '<div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:12px;">🏛️ Nifty 50 Equities Breadth Engine (Live 10s Stream)</div>'
+        '<div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:12px;">🏛️ Nifty 50 Equities Breadth Engine (Live Stream)</div>'
         '<div class="breadth-flex-row">'
         '<span class="breadth-label">Above Open:</span>'
         f'<span class="{buy_class}">{ab_op}</span>'
@@ -1140,4 +1126,4 @@ while True:
     if not market_active:
         st.stop()
 
-    time.sleep(1)
+    time.sleep(2)
