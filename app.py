@@ -191,99 +191,167 @@ st.markdown("""
         font-size: 13px;
     }
 
-    /* Breadth Number Badges */
-    .num-box-buy {
+    /* Touching Connected 2-Box System (Only Numbers Enlarged to 32px) */
+    .touch-box-group {
+        display: inline-flex;
+        flex-direction: row;
+        align-items: center;
+    }
+    .touch-left-darkgreen {
         background-color: #000000;
         color: #00ff7f;
-        border: 2px solid #00ff7f;
-        padding: 4px 14px;
-        border-radius: 6px;
+        border: 2.5px solid #008000;
+        border-right: 1.5px solid #008000;
+        padding: 4px 18px;
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
         font-weight: 900;
-        font-size: 20px;
-        display: inline-block;
+        font-size: 32px;
         text-align: center;
-        min-width: 50px;
+        min-width: 60px;
+        line-height: 1.1;
     }
-    .num-box-buy-highlight {
-        background-color: #00ff7f;
+    .touch-left-darkgreen-highlight {
+        background-color: #008000;
         color: #000000;
-        border: 2px solid #00ff7f;
-        padding: 4px 14px;
-        border-radius: 6px;
+        border: 2.5px solid #008000;
+        border-right: 1.5px solid #008000;
+        padding: 4px 18px;
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
         font-weight: 900;
-        font-size: 20px;
-        display: inline-block;
+        font-size: 32px;
         text-align: center;
-        min-width: 50px;
+        min-width: 60px;
+        line-height: 1.1;
     }
-    .num-box-sell {
+    .touch-right-orange {
         background-color: #000000;
         color: #ffffff;
-        border: 2px solid #ff3333;
-        padding: 4px 14px;
-        border-radius: 6px;
+        border: 2.5px solid #ff9800;
+        border-left: 1.5px solid #ff9800;
+        padding: 4px 18px;
+        border-top-right-radius: 8px;
+        border-bottom-right-radius: 8px;
         font-weight: 900;
-        font-size: 20px;
-        display: inline-block;
+        font-size: 32px;
         text-align: center;
-        min-width: 50px;
+        min-width: 60px;
+        line-height: 1.1;
     }
-    .num-box-sell-highlight {
-        background-color: #ff3333;
+    .touch-right-darkred-highlight {
+        background-color: #8b0000;
         color: #ffffff;
-        border: 2px solid #ff3333;
-        padding: 4px 14px;
-        border-radius: 6px;
+        border: 2.5px solid #8b0000;
+        border-left: 1.5px solid #8b0000;
+        padding: 4px 18px;
+        border-top-right-radius: 8px;
+        border-bottom-right-radius: 8px;
         font-weight: 900;
-        font-size: 20px;
-        display: inline-block;
+        font-size: 32px;
         text-align: center;
-        min-width: 50px;
+        min-width: 60px;
+        line-height: 1.1;
     }
 
-    /* Top Weightage 2-Box System */
-    .heavy-box-green {
+    /* Touching Weightage Boxes (White text inside, 32px font) */
+    .touch-left-weight-darkgreen {
         background-color: #000000;
         color: #ffffff;
-        border: 2px solid #00ff7f;
-        padding: 4px 14px;
-        border-radius: 6px;
+        border: 2.5px solid #008000;
+        border-right: 1.5px solid #008000;
+        padding: 4px 18px;
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
         font-weight: 900;
-        font-size: 20px;
-        display: inline-block;
+        font-size: 32px;
         text-align: center;
-        min-width: 50px;
+        min-width: 60px;
+        line-height: 1.1;
     }
-    .heavy-box-red {
+    .touch-right-weight-orange {
         background-color: #000000;
         color: #ffffff;
-        border: 2px solid #ff3333;
-        padding: 4px 14px;
-        border-radius: 6px;
+        border: 2.5px solid #ff9800;
+        border-left: 1.5px solid #ff9800;
+        padding: 4px 18px;
+        border-top-right-radius: 8px;
+        border-bottom-right-radius: 8px;
         font-weight: 900;
-        font-size: 20px;
-        display: inline-block;
+        font-size: 32px;
         text-align: center;
-        min-width: 50px;
+        min-width: 60px;
+        line-height: 1.1;
     }
 
+    /* Live Buyer Row Styling */
+    .power-live-row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 16px;
+        padding: 10px 4px;
+        border-bottom: 1px solid #1f2937;
+        font-size: 14px;
+        font-weight: 800;
+        flex-wrap: wrap;
+    }
+    .call-buyer-badge {
+        color: #00ff7f;
+        background-color: #0a1f12;
+        padding: 5px 12px;
+        border-radius: 5px;
+        border: 1px solid #008000;
+    }
+    .put-buyer-badge {
+        color: #ff9800;
+        background-color: #241407;
+        padding: 5px 12px;
+        border-radius: 5px;
+        border: 1px solid #ff9800;
+    }
+
+    /* Left-side Text Alignment: Standard 14px size */
     .breadth-flex-row {
         display: flex;
         flex-direction: row;
         align-items: center;
-        padding: 10px 4px;
+        padding: 8px 4px;
         border-bottom: 1px solid #1f2937;
         font-size: 14px;
-        gap: 12px;
+        gap: 18px;
         flex-wrap: wrap;
     }
     .breadth-flex-row:last-child { border-bottom: none; }
-    .breadth-label { font-weight: 700; color: #e6edf3; font-size: 14px; }
+    .breadth-label { font-weight: 700; color: #e6edf3; font-size: 14px; min-width: 140px; }
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# 2. TIMEZONE & ROBUST EXPIRY PARSER
+# 2. INDIAN NUMBER FORMATTER (e.g. +77,70,945)
+# -------------------------------------------------------------
+def format_indian_number(num):
+    try:
+        val = int(num)
+        sign = "+" if val > 0 else ("-" if val < 0 else "")
+        s = str(abs(val))
+        if len(s) <= 3:
+            return f"{sign}{s}"
+        last3 = s[-3:]
+        other = s[:-3]
+        groups = []
+        while len(other) > 2:
+            groups.insert(0, other[-2:])
+            other = other[:-2]
+        if other:
+            groups.insert(0, other)
+        formatted_str = ",".join(groups) + "," + last3
+        return f"{sign}{formatted_str}"
+    except Exception:
+        return str(num)
+
+# -------------------------------------------------------------
+# 3. TIMEZONE & ROBUST EXPIRY PARSER
 # -------------------------------------------------------------
 IST = timezone(timedelta(hours=5, minutes=30))
 MONTH_MAP = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
@@ -333,7 +401,7 @@ def is_market_open():
     return True, "🟢 Live Market Active"
 
 # -------------------------------------------------------------
-# 3. DIRECT REST API SESSION ENGINE
+# 4. DIRECT REST API SESSION ENGINE
 # -------------------------------------------------------------
 class AngelDirectClient:
     def __init__(self, jwt_token, api_key):
@@ -416,7 +484,7 @@ else:
     auth_log = st.session_state.smart_api_log
 
 # -------------------------------------------------------------
-# 4. SCRIP MASTER & NIFTY 50 EQUITIES LOADER
+# 5. SCRIP MASTER & NIFTY 50 EQUITIES LOADER
 # -------------------------------------------------------------
 NIFTY_50_SYMBOLS = [
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR", "ITC", "SBIN",
@@ -439,7 +507,6 @@ def load_all_scrip_masters():
             nifty_options = df[(df["name"] == "NIFTY") & (df["exch_seg"] == "NFO")].copy()
             raw_strikes = pd.to_numeric(nifty_options["strike"], errors="coerce").fillna(0.0)
             
-            # Strike unit normalization (Converts 2430000.0 or 24300.0 reliably to 24300)
             nifty_options["strike_int"] = raw_strikes.apply(lambda x: int(round(x / 100.0)) if x > 100000 else int(round(x)))
             nifty_options["parsed_date"] = nifty_options["expiry"].apply(parse_expiry_date)
             
@@ -454,7 +521,7 @@ def load_all_scrip_masters():
 scrip_df, nifty50_df = load_all_scrip_masters()
 
 # -------------------------------------------------------------
-# 5. DATA RETRIEVAL & MARKET SNAPSHOT
+# 6. DATA RETRIEVAL & MARKET SNAPSHOT
 # -------------------------------------------------------------
 def get_live_india_vix(_api):
     vix_val, vix_chg = 0.0, 0.0
@@ -524,7 +591,7 @@ def get_live_market_snapshot(_api, scrip_data):
     return nifty_spot, fut_price, atm_strike, expiry_str, call_ltp, put_ltp, ce_token, pe_token, ce_symbol, pe_symbol
 
 # -------------------------------------------------------------
-# 6. PURE LIVE OPEN INTEREST & REAL ORDER FLOW ENGINE
+# 7. PURE LIVE OPEN INTEREST & REAL ORDER FLOW ENGINE
 # -------------------------------------------------------------
 def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     if atm_strike == 0:
@@ -552,7 +619,6 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
 
                 all_tokens = [str(x) for x in list(target_ce["token"].values) + list(target_pe["token"].values)]
                 
-                # Direct batch request
                 res = _api.getMarketData("FULL", {"NFO": all_tokens})
                 if res and res.get("status") and "fetched" in res.get("data", {}):
                     fetched_items = {str(itm.get("symbolToken", itm.get("token", ""))): itm for itm in res["data"]["fetched"]}
@@ -628,10 +694,13 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike):
     return strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, pcr_val, total_ce_oi, total_pe_oi, is_live
 
 # -------------------------------------------------------------
-# 7. LIVE NIFTY 50 BREADTH (Fast 25-Token Batch Mode)
+# 8. LIVE NIFTY 50 BREADTH (Top 3 & Top 10 Heavyweights Tracker)
 # -------------------------------------------------------------
+TOP_10_HEAVYWEIGHTS = ["HDFCBANK", "RELIANCE", "ICICIBANK", "INFY", "ITC", "TCS", "LT", "AXISBANK", "KOTAKBANK", "BHARTIARTL"]
+TOP_3_HEAVYWEIGHTS = ["HDFCBANK", "ICICIBANK", "RELIANCE"]
+
 def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
-    above_open, below_open, above_15m_high, below_15m_low, heavy_above_cnt, heavy_below_cnt = prev_cached
+    above_open, below_open, above_15m_high, below_15m_low, heavy3_above, heavy3_below, heavy10_above, heavy10_below = prev_cached
 
     if _api and n50_df is not None and not n50_df.empty:
         try:
@@ -639,10 +708,9 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
             token_to_name = {str(row["token"]): row["name"] for _, row in n50_df.iterrows()}
             
             a_o, b_o, a_15, b_15 = 0, 0, 0, 0
-            h_above, h_below = 0, 0
-            target_heavy = ["HDFCBANK", "ICICIBANK", "RELIANCE"]
+            h3_a, h3_b = 0, 0
+            h10_a, h10_b = 0, 0
 
-            # Dual 25-token queries
             for chunk_i in range(0, len(tokens_list), 25):
                 sub_toks = tokens_list[chunk_i:chunk_i+25]
                 quote_res = _api.getMarketData("OHLC", {"NSE": sub_toks})
@@ -669,27 +737,35 @@ def fetch_nifty_50_breadth_and_heavyweights(_api, n50_df, prev_cached):
                                 b_15 += 1
 
                             sym_name = token_to_name.get(tok_id, "")
-                            if sym_name in target_heavy:
+                            if sym_name in TOP_3_HEAVYWEIGHTS:
                                 if ltp >= opn:
-                                    h_above += 1
+                                    h3_a += 1
                                 else:
-                                    h_below += 1
+                                    h3_b += 1
+
+                            if sym_name in TOP_10_HEAVYWEIGHTS:
+                                if ltp >= opn:
+                                    h10_a += 1
+                                else:
+                                    h10_b += 1
 
             if (a_o + b_o) > 0:
                 above_open = a_o
                 below_open = b_o
                 above_15m_high = a_15
                 below_15m_low = b_15
-                heavy_above_cnt = h_above
-                heavy_below_cnt = h_below
+                heavy3_above = h3_a
+                heavy3_below = h3_b
+                heavy10_above = h10_a
+                heavy10_below = h10_b
         except Exception:
             pass
 
     open_sentiment = "BULLISH" if above_open >= 35 else ("BEARISH" if below_open >= 35 else "NEUTRAL")
-    return above_open, below_open, open_sentiment, above_15m_high, below_15m_low, heavy_above_cnt, heavy_below_cnt
+    return above_open, below_open, open_sentiment, above_15m_high, below_15m_low, heavy3_above, heavy3_below, heavy10_above, heavy10_below
 
 # -------------------------------------------------------------
-# 8. LOCKED CHART GENERATION (Always Renders Scaffold)
+# 9. LOCKED CHART GENERATION
 # -------------------------------------------------------------
 def render_oi_chart(strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, fut_price):
     if not strikes:
@@ -793,7 +869,7 @@ def render_scalp_chart(times_dt, put_prices, call_prices, volumes, atm_strike):
     return fig_scalp
 
 # -------------------------------------------------------------
-# 9. HEADER & DASHBOARD PLACEHOLDERS
+# 10. HEADER & DASHBOARD PLACEHOLDERS
 # -------------------------------------------------------------
 nifty_spot, fut_price, atm_strike, expiry_str, call_ltp, put_ltp, ce_token, pe_token, ce_symbol, pe_symbol = get_live_market_snapshot(smart_api, scrip_df)
 strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow, live_cp, live_pp, live_pcr, total_ce_oi, total_pe_oi, is_live = fetch_live_oi_and_power(smart_api, scrip_df, atm_strike)
@@ -828,7 +904,7 @@ if "last_minute_recorded" not in st.session_state:
     st.session_state.last_minute_recorded = get_current_ist().minute
 
 if "last_n50_breadth" not in st.session_state:
-    st.session_state.last_n50_breadth = (0, 0, "NEUTRAL", 0, 0, 0, 0)
+    st.session_state.last_n50_breadth = (0, 0, "NEUTRAL", 0, 0, 0, 0, 0, 0)
 
 if "last_breadth_update_ts" not in st.session_state:
     st.session_state.last_breadth_update_ts = 0.0
@@ -842,7 +918,7 @@ def get_status_badge_html(status_text):
         return '<span class="badge-neutral-tag">NEUTRAL</span>'
 
 # -------------------------------------------------------------
-# 10. INITIAL RENDERING
+# 11. INITIAL RENDERING
 # -------------------------------------------------------------
 live_vix, live_vix_chg = get_live_india_vix(smart_api)
 
@@ -863,7 +939,7 @@ sentiment_tag = "🔴 Put Buyers Strong" if cur_put_power > cur_call_power else 
 loop_tick = 0
 
 # -------------------------------------------------------------
-# 11. STREAMING LOOP
+# 12. STREAMING LOOP
 # -------------------------------------------------------------
 while True:
     loop_tick += 1
@@ -884,7 +960,8 @@ while True:
         if (current_timestamp - st.session_state.last_breadth_update_ts) >= 5:
             prev_vals = (st.session_state.last_n50_breadth[0], st.session_state.last_n50_breadth[1], 
                          st.session_state.last_n50_breadth[3], st.session_state.last_n50_breadth[4],
-                         st.session_state.last_n50_breadth[5], st.session_state.last_n50_breadth[6])
+                         st.session_state.last_n50_breadth[5], st.session_state.last_n50_breadth[6],
+                         st.session_state.last_n50_breadth[7], st.session_state.last_n50_breadth[8])
             st.session_state.last_n50_breadth = fetch_nifty_50_breadth_and_heavyweights(smart_api, nifty50_df, prev_vals)
             st.session_state.last_breadth_update_ts = current_timestamp
 
@@ -946,7 +1023,7 @@ while True:
         straddle_cmp, straddle_vwap, straddle_tloc = 0.0, 0.0, 0.0
 
     # Evaluate Checkpoints
-    cp1_val = f"CE Net: {cur_call_power:+,d} | PE Net: {cur_put_power:+,d}"
+    cp1_val = f"CE Net: {format_indian_number(cur_call_power)} | PE Net: {format_indian_number(cur_put_power)}"
     cp1_status = "BULLISH" if cur_call_power > 0 and cur_put_power < 0 else ("BEARISH" if cur_put_power > 0 and cur_call_power < 0 else "NEUTRAL")
     
     atm_idx = len(strikes) // 2 if len(strikes) > 0 else 0
@@ -961,7 +1038,7 @@ while True:
     cp4_val = f"Straddle: ₹{straddle_cmp:.1f} | VWAP: ₹{straddle_vwap:.1f} | TLOC: ₹{straddle_tloc:.1f}"
     cp4_status = "BULLISH" if straddle_cmp > straddle_vwap and straddle_cmp > straddle_tloc and straddle_vwap > 0 else "NEUTRAL"
     
-    cp5_val = f"Order Flow Delta: {cur_call_power - cur_put_power:+,d} contracts"
+    cp5_val = f"Order Flow Delta: {format_indian_number(cur_call_power - cur_put_power)} contracts"
     cp5_status = "BULLISH" if (cur_call_power - cur_put_power) > 200000 else ("BEARISH" if (cur_put_power - cur_call_power) > 200000 else "NEUTRAL")
     
     max_pain_strike = atm_strike
@@ -1019,32 +1096,60 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # 2. Nifty 50 Breadth + 2-Box Top Weightage
-    ab_op, bl_op, op_sent, ab_15, bl_15, h_above_cnt, h_below_cnt = st.session_state.last_n50_breadth
-    buy_class = "num-box-buy-highlight" if ab_op >= 35 else "num-box-buy"
-    sell_class = "num-box-sell-highlight" if bl_op >= 35 else "num-box-sell"
+    # 2. Nifty Breadth with 32px Numbers & Standard 14px Labels
+    ab_op, bl_op, op_sent, ab_15, bl_15, h3_a, h3_b, h10_a, h10_b = st.session_state.last_n50_breadth
+    
+    # Conditional highlight: >= 35 gives Dark Green bg with Black text; right side >= 35 gives Dark Red bg with White text
+    buy_class = "touch-left-darkgreen-highlight" if ab_op >= 35 else "touch-left-darkgreen"
+    sell_class = "touch-right-darkred-highlight" if bl_op >= 35 else "touch-right-orange"
 
     breadth_html = (
         '<div class="checkpoint-container">'
-        '<div style="font-size:15px; font-weight:800; color:#38bdf8; margin-bottom:12px;">🏛️ Nifty 50 Equities Breadth Engine (Live Stream)</div>'
+        
+        '<!-- Row 1: Nifty -->'
         '<div class="breadth-flex-row">'
-        '<span class="breadth-label">Above Open:</span>'
+        '<span class="breadth-label">Nifty</span>'
+        '<div class="touch-box-group">'
         f'<span class="{buy_class}">{ab_op}</span>'
         f'<span class="{sell_class}">{bl_op}</span>'
-        '<span class="breadth-label">Below Open</span>'
+        '</div>'
         f'<div style="margin-left: auto;">{get_status_badge_html(op_sent)}</div>'
         '</div>'
+        
+        '<!-- Row 2: 15 min -->'
         '<div class="breadth-flex-row">'
-        '<span class="breadth-label">Above 15m High:</span>'
-        f'<span class="num-box-buy">{ab_15}</span>'
-        f'<span class="num-box-sell">{bl_15}</span>'
-        '<span class="breadth-label">Below 15m Low</span>'
+        '<span class="breadth-label">15 min</span>'
+        '<div class="touch-box-group">'
+        f'<span class="touch-left-darkgreen">{ab_15}</span>'
+        f'<span class="touch-right-orange">{bl_15}</span>'
         '</div>'
-        '<div class="breadth-flex-row" style="gap: 14px; padding-top: 10px;">'
-        '<span class="breadth-label">Top Weightage:</span>'
-        f'<span class="heavy-box-green">{h_above_cnt}</span>'
-        f'<span class="heavy-box-red">{h_below_cnt}</span>'
         '</div>'
+        
+        '<!-- Row 3: 3 weightage -->'
+        '<div class="breadth-flex-row">'
+        '<span class="breadth-label">3 weightage</span>'
+        '<div class="touch-box-group">'
+        f'<span class="touch-left-weight-darkgreen">{h3_a}</span>'
+        f'<span class="touch-right-weight-orange">{h3_b}</span>'
+        '</div>'
+        '</div>'
+
+        '<!-- Row 4: 10 weightage -->'
+        '<div class="breadth-flex-row">'
+        '<span class="breadth-label">10 weightage</span>'
+        '<div class="touch-box-group">'
+        f'<span class="touch-left-weight-darkgreen">{h10_a}</span>'
+        f'<span class="touch-right-weight-orange">{h10_b}</span>'
+        '</div>'
+        '</div>'
+
+        '<!-- Row 5: Call Buyer & Put Buyer Live Row with Strength -->'
+        '<div class="power-live-row">'
+        f'<span>Call Buyer: <span class="call-buyer-badge">{format_indian_number(cur_call_power)}</span></span>'
+        f'<span>Put Buyer: <span class="put-buyer-badge">{format_indian_number(cur_put_power)}</span></span>'
+        f'<span style="margin-left: auto;">{sentiment_tag}</span>'
+        '</div>'
+        
         '</div>'
     )
     breadth_box.markdown(breadth_html, unsafe_allow_html=True)
@@ -1113,20 +1218,20 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # 6. Live Power Matrix Table
+    # 6. Live Power Matrix Table (Indian Numbering Formatted)
     live_time_label = f"🔴 LIVE ({current_time_ist.strftime('%I:%M:%S %p')})" if market_active else f"⏸️ CLOSED ({current_time_ist.strftime('%I:%M:%S %p')})"
     table_rows = [{
         "Time (IST)": live_time_label,
-        "Call Power (CE Contracts)": f"{cur_call_power:+,d}",
-        "Put Power (PE Contracts)": f"{cur_put_power:+,d}",
+        "Call Power (CE Contracts)": format_indian_number(cur_call_power),
+        "Put Power (PE Contracts)": format_indian_number(cur_put_power),
         "Market Sentiment": sentiment_tag
     }]
 
     for hist in reversed(st.session_state.matrix_history):
         table_rows.append({
             "Time (IST)": hist["Time"],
-            "Call Power (CE Contracts)": f"{hist['Call Power']:+,d}",
-            "Put Power (PE Contracts)": f"{hist['Put Power']:+,d}",
+            "Call Power (CE Contracts)": format_indian_number(hist["Call Power"]),
+            "Put Power (PE Contracts)": format_indian_number(hist["Put Power"]),
             "Market Sentiment": hist["Sentiment"]
         })
 
