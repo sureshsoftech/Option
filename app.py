@@ -416,7 +416,7 @@ else:
     auth_log = st.session_state.smart_api_log
 
 # -------------------------------------------------------------
-# 4. SCRIP MASTER & NIFTY 50 EQUITIES LOADER (STRIKE FIX APPLIED)
+# 4. SCRIP MASTER & NIFTY 50 EQUITIES LOADER
 # -------------------------------------------------------------
 NIFTY_50_SYMBOLS = [
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR", "ITC", "SBIN",
@@ -440,11 +440,7 @@ def load_all_scrip_masters():
             raw_strikes = pd.to_numeric(nifty_options["strike"], errors="coerce").fillna(0.0)
             
             # Strike unit normalization
-            if raw_strikes.max() > 100000:
-                nifty_options["strike"] = raw_strikes / 100.0
-            else:
-                nifty_options["strike"] = raw_strikes
-
+            nifty_options["strike"] = raw_strikes.apply(lambda x: x / 100.0 if x > 100000 else x)
             nifty_options["parsed_date"] = nifty_options["expiry"].apply(parse_expiry_date)
             
             n50_equities = df[(df["exch_seg"] == "NSE") & (df["symbol"].str.endswith("-EQ")) & (df["name"].isin(NIFTY_50_SYMBOLS))].copy()
