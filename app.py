@@ -191,70 +191,78 @@ st.markdown("""
         font-size: 13px;
     }
 
-    /* Touching Connected 2-Box System (Exact 28px Font Size Across All 4 Rows) */
+    /* Touching Connected 2-Box System (Strict 24px Size: All Left Boxes Green Border, All Right Boxes Orange Border) */
     .touch-box-group {
         display: inline-flex;
         flex-direction: row;
         align-items: center;
     }
     .touch-left-green-box {
-        background-color: #000000;
-        color: #ffffff;
-        border: 2.5px solid #008000;
-        border-right: 1.5px solid #008000;
-        padding: 4px 16px;
-        border-top-left-radius: 8px;
-        border-bottom-left-radius: 8px;
+        background-color: #000000 !important;
+        color: #ffffff !important;
+        border-top: 2.5px solid #008000 !important;
+        border-bottom: 2.5px solid #008000 !important;
+        border-left: 2.5px solid #008000 !important;
+        border-right: 1.5px solid #008000 !important;
+        padding: 4px 14px;
+        border-top-left-radius: 6px;
+        border-bottom-left-radius: 6px;
         font-weight: 900;
-        font-size: 28px;
+        font-size: 24px;
         text-align: center;
-        min-width: 56px;
+        min-width: 50px;
         line-height: 1.1;
     }
     .touch-left-green-highlight {
-        background-color: #008000;
-        color: #000000;
-        border: 2.5px solid #008000;
-        border-right: 1.5px solid #008000;
-        padding: 4px 16px;
-        border-top-left-radius: 8px;
-        border-bottom-left-radius: 8px;
+        background-color: #008000 !important;
+        color: #000000 !important;
+        border-top: 2.5px solid #008000 !important;
+        border-bottom: 2.5px solid #008000 !important;
+        border-left: 2.5px solid #008000 !important;
+        border-right: 1.5px solid #008000 !important;
+        padding: 4px 14px;
+        border-top-left-radius: 6px;
+        border-bottom-left-radius: 6px;
         font-weight: 900;
-        font-size: 28px;
+        font-size: 24px;
         text-align: center;
-        min-width: 56px;
+        min-width: 50px;
         line-height: 1.1;
     }
     .touch-right-orange-box {
-        background-color: #000000;
-        color: #ffffff;
-        border: 2.5px solid #ff9800;
-        border-left: 1.5px solid #ff9800;
-        padding: 4px 16px;
-        border-top-right-radius: 8px;
-        border-bottom-right-radius: 8px;
+        background-color: #000000 !important;
+        color: #ffffff !important;
+        border-top: 2.5px solid #ff9800 !important;
+        border-bottom: 2.5px solid #ff9800 !important;
+        border-right: 2.5px solid #ff9800 !important;
+        border-left: 1.5px solid #ff9800 !important;
+        padding: 4px 14px;
+        border-top-right-radius: 6px;
+        border-bottom-right-radius: 6px;
         font-weight: 900;
-        font-size: 28px;
+        font-size: 24px;
         text-align: center;
-        min-width: 56px;
+        min-width: 50px;
         line-height: 1.1;
     }
     .touch-right-orange-highlight {
-        background-color: #8b0000;
-        color: #ffffff;
-        border: 2.5px solid #8b0000;
-        border-left: 1.5px solid #8b0000;
-        padding: 4px 16px;
-        border-top-right-radius: 8px;
-        border-bottom-right-radius: 8px;
+        background-color: #8b0000 !important;
+        color: #ffffff !important;
+        border-top: 2.5px solid #8b0000 !important;
+        border-bottom: 2.5px solid #8b0000 !important;
+        border-right: 2.5px solid #8b0000 !important;
+        border-left: 1.5px solid #8b0000 !important;
+        padding: 4px 14px;
+        border-top-right-radius: 6px;
+        border-bottom-right-radius: 6px;
         font-weight: 900;
-        font-size: 28px;
+        font-size: 24px;
         text-align: center;
-        min-width: 56px;
+        min-width: 50px;
         line-height: 1.1;
     }
 
-    /* Live Buyer Row Styling (Orange for Put Buyer) */
+    /* Live Buyer Row Styling */
     .power-live-row {
         display: flex;
         flex-direction: row;
@@ -281,7 +289,7 @@ st.markdown("""
         border: 1px solid #ff9800;
     }
 
-    /* Left-side Text Alignment: Standard 14px size */
+    /* Left-side Text Alignment */
     .breadth-flex-row {
         display: flex;
         flex-direction: row;
@@ -1067,10 +1075,10 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # 2. Nifty Breadth with 28px Numbers (Green Border on Left, Orange Border on Right for all 4 rows)
+    # 2. Nifty Breadth (Explicit Green Border on Left, Orange Border on Right for all 4 rows)
     ab_op, bl_op, op_sent, ab_15, bl_15, h3_a, h3_b, h10_a, h10_b = st.session_state.last_n50_breadth
     
-    # Conditional highlight: >34 (i.e. >=35) gives Dark Green bg with Black text; right side >34 gives Dark Red bg with White text
+    # Conditional highlight for Row 1
     buy_class = "touch-left-green-highlight" if ab_op > 34 else "touch-left-green-box"
     sell_class = "touch-right-orange-highlight" if bl_op > 34 else "touch-right-orange-box"
 
