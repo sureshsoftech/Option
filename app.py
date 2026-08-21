@@ -74,7 +74,7 @@ st.markdown("""
         flex-direction: row;
         align-items: center;
         flex-wrap: wrap;
-        gap: 16px;
+        gap: 12px;
     }
     .val-badge-neutral {
         background-color: #21262d;
@@ -137,7 +137,7 @@ st.markdown("""
         background: #11161f;
         border: 1px solid #21262d;
         border-radius: 8px;
-        padding: 12px 16px;
+        padding: 10px 14px;
         margin-top: 10px;
         margin-bottom: 12px;
     }
@@ -163,35 +163,40 @@ st.markdown("""
     .badge-bullish-tag {
         background-color: #00ff7f;
         color: #000000;
-        padding: 5px 14px;
+        padding: 4px 10px;
         border-radius: 4px;
         font-weight: 800;
-        font-size: 13px;
+        font-size: 12px;
         letter-spacing: 0.5px;
         display: inline-block;
         text-align: center;
+        white-space: nowrap;
     }
     .badge-bearish-tag {
         background-color: #ff3333;
         color: #ffffff;
-        padding: 5px 14px;
+        padding: 4px 10px;
         border-radius: 4px;
         font-weight: 800;
-        font-size: 13px;
+        font-size: 12px;
         letter-spacing: 0.5px;
         display: inline-block;
         text-align: center;
+        white-space: nowrap;
     }
     .badge-neutral-tag {
         background-color: #4b5563;
         color: #ffffff;
-        padding: 5px 12px;
+        padding: 4px 10px;
         border-radius: 4px;
         font-weight: 700;
-        font-size: 13px;
+        font-size: 12px;
+        display: inline-block;
+        text-align: center;
+        white-space: nowrap;
     }
 
-    /* Touching Connected 2-Box System (Numbers set to 20px) */
+    /* Touching Connected 2-Box System */
     .touch-box-group {
         display: inline-flex;
         flex-direction: row;
@@ -204,7 +209,7 @@ st.markdown("""
         border-bottom: 2px solid #008000 !important;
         border-left: 2px solid #008000 !important;
         border-right: 1px solid #008000 !important;
-        padding: 3px 12px;
+        padding: 4px 12px;
         border-top-left-radius: 6px;
         border-bottom-left-radius: 6px;
         font-weight: 900;
@@ -220,7 +225,7 @@ st.markdown("""
         border-bottom: 2px solid #008000 !important;
         border-left: 2px solid #008000 !important;
         border-right: 1px solid #008000 !important;
-        padding: 3px 12px;
+        padding: 4px 12px;
         border-top-left-radius: 6px;
         border-bottom-left-radius: 6px;
         font-weight: 900;
@@ -236,7 +241,7 @@ st.markdown("""
         border-bottom: 2px solid #ff9800 !important;
         border-right: 2px solid #ff9800 !important;
         border-left: 1px solid #ff9800 !important;
-        padding: 3px 12px;
+        padding: 4px 12px;
         border-top-right-radius: 6px;
         border-bottom-right-radius: 6px;
         font-weight: 900;
@@ -252,7 +257,7 @@ st.markdown("""
         border-bottom: 2px solid #8b0000 !important;
         border-right: 2px solid #8b0000 !important;
         border-left: 1px solid #8b0000 !important;
-        padding: 3px 12px;
+        padding: 4px 12px;
         border-top-right-radius: 6px;
         border-bottom-right-radius: 6px;
         font-weight: 900;
@@ -267,41 +272,79 @@ st.markdown("""
         display: flex;
         flex-direction: row;
         align-items: center;
-        gap: 16px;
-        padding: 10px 4px;
-        border-bottom: 1px solid #1f2937;
-        font-size: 14px;
+        gap: 10px;
+        padding: 10px 4px 4px 4px;
+        font-size: 13px;
         font-weight: 800;
         flex-wrap: wrap;
     }
     .call-buyer-badge {
         color: #00ff7f;
         background-color: #0a1f12;
-        padding: 5px 12px;
+        padding: 4px 10px;
         border-radius: 5px;
         border: 1px solid #008000;
+        font-size: 13px;
     }
     .put-buyer-badge {
         color: #ff9800;
         background-color: #241407;
-        padding: 5px 12px;
+        padding: 4px 10px;
         border-radius: 5px;
         border: 1px solid #ff9800;
+        font-size: 13px;
     }
 
-    /* Left-side Text Alignment */
+    /* Mobile Responsive Left Alignment System (Prevents wrapping) */
     .breadth-flex-row {
         display: flex;
         flex-direction: row;
         align-items: center;
-        padding: 8px 4px;
+        padding: 6px 2px;
         border-bottom: 1px solid #1f2937;
         font-size: 14px;
-        gap: 18px;
-        flex-wrap: wrap;
+        gap: 12px;
+        flex-wrap: nowrap !important;
+        width: 100%;
     }
     .breadth-flex-row:last-child { border-bottom: none; }
-    .breadth-label { font-weight: 700; color: #e6edf3; font-size: 14px; min-width: 140px; }
+    .breadth-label {
+        font-weight: 700;
+        color: #e6edf3;
+        font-size: 14px;
+        min-width: 95px !important;
+        max-width: 105px !important;
+        white-space: nowrap;
+    }
+
+    @media (max-width: 480px) {
+        .breadth-flex-row {
+            gap: 8px !important;
+            padding: 5px 0px !important;
+        }
+        .breadth-label {
+            min-width: 85px !important;
+            max-width: 90px !important;
+            font-size: 13px !important;
+        }
+        .touch-left-green-box, .touch-left-green-highlight,
+        .touch-right-orange-box, .touch-right-orange-highlight {
+            padding: 3px 10px !important;
+            min-width: 40px !important;
+            font-size: 18px !important;
+        }
+        .badge-bullish-tag, .badge-bearish-tag, .badge-neutral-tag {
+            padding: 3px 8px !important;
+            font-size: 11px !important;
+        }
+        .top-price-box {
+            padding: 8px 10px !important;
+        }
+        .val-badge-neutral, .val-badge-call, .val-badge-put {
+            padding: 4px 8px !important;
+            font-size: 13px !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1075,10 +1118,10 @@ while True:
     </div>
     """, unsafe_allow_html=True)
 
-    # 2. Nifty Breadth (Clean 20px Numbers: All Left Boxes Green Border, All Right Boxes Orange Border)
+    # 2. Nifty Breadth (Left-Aligned Mobile Optimized with Green & Orange Borders)
     ab_op, bl_op, op_sent, ab_15, bl_15, h3_a, h3_b, h10_a, h10_b = st.session_state.last_n50_breadth
     
-    # Conditional highlight: >34 gives Dark Green bg with Black text; right side >34 gives Dark Red bg with White text
+    # Conditional highlight for Row 1
     buy_class = "touch-left-green-highlight" if ab_op > 34 else "touch-left-green-box"
     sell_class = "touch-right-orange-highlight" if bl_op > 34 else "touch-right-orange-box"
 
