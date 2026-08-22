@@ -83,7 +83,6 @@ st.markdown("""
     .breadth-flex-row:last-child { border-bottom: none; }
     .breadth-label { font-weight: 700; color: #e6edf3; font-size: 14px; min-width: 95px !important; max-width: 105px !important; white-space: nowrap; }
 
-    /* Order Flow Pressure Matrix Styling */
     .flow-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; margin-top: 6px; }
     .flow-table th { background-color: #161b22; color: #94a3b8; padding: 7px 4px; border: 1px solid #21262d; font-weight: 800; }
     .flow-table td { padding: 6px 4px; border: 1px solid #21262d; font-weight: 700; }
@@ -511,7 +510,6 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike, spot_price, fut_price)
     atm_ce_real_vol, atm_pe_real_vol = 0, 0
     is_live = False
 
-    # Futures Confirmation Filter
     fut_basis = fut_price - spot_price
     fut_bullish_bias = 5 if fut_basis > 10 else (-5 if fut_basis < -10 else 0)
 
@@ -604,7 +602,6 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike, spot_price, fut_price)
                                 p_ratio = int(round((b_v / max(1, b_v + s_v)) * 100)) if (b_v + s_v) > 0 else 50
                                 matrix_flow_data[s_val]["CE_PRESSURE"] = p_ratio
 
-                                # 4-Quadrant Institutional Regime
                                 prem_up = cur_ltp >= close_p
                                 oi_up = (oi - prev_oi) >= 0 if prev_oi > 0 else True
                                 if prem_up and oi_up:
@@ -617,7 +614,6 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike, spot_price, fut_price)
                                     regime = "Long Unwinding"
                                 matrix_flow_data[s_val]["CE_REGIME"] = regime
 
-                                # 0-100 Score with Futures Confirmation
                                 raw_score = (p_ratio * 0.40) + ((cur_ltp / max(1.0, close_p) - 1.0) * 100 * 2.5 + 50) * 0.35 + (50 if oi_up else 30) * 0.25 + fut_bullish_bias
                                 matrix_flow_data[s_val]["CE_SCORE"] = int(np.clip(raw_score, 0, 100))
 
@@ -691,7 +687,6 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike, spot_price, fut_price)
                                     regime = "Long Unwinding"
                                 matrix_flow_data[s_val]["PE_REGIME"] = regime
 
-                                # 0-100 Score with Futures Confirmation
                                 raw_score = (p_ratio * 0.40) + ((cur_ltp / max(1.0, close_p) - 1.0) * 100 * 2.5 + 50) * 0.35 + (50 if oi_up else 30) * 0.25 - fut_bullish_bias
                                 matrix_flow_data[s_val]["PE_SCORE"] = int(np.clip(raw_score, 0, 100))
 
@@ -1181,8 +1176,8 @@ while True:
     )
     breadth_box.markdown(breadth_html, unsafe_allow_html=True)
 
-    # 2b. Option Order Flow Pressure & Aggression Matrix (0-100 Multi-Factor Score)
-    rows_html = ""
+    # 2b. Option Order Flow Pressure & Aggression Matrix
+    rows_parts = []
     alert_msgs = []
 
     for s in sorted(matrix_flow_data.keys()):
@@ -1191,71 +1186,65 @@ while True:
         ce_cls = "score-badge-high" if ce_sc >= 65 else ("score-badge-low" if ce_sc <= 35 else "score-badge-mid")
         pe_cls = "score-badge-high" if pe_sc >= 65 else ("score-badge-low" if pe_sc <= 35 else "score-badge-mid")
 
-        if item["CE_PRESSURE"] >= 70 and item["CE_REGIME"] == "Long Buildup":
+        if item["CE_PRESSURE"] >= 70 and "Buildup" in item["CE_REGIME"]:
             alert_msgs.append(f"🔥 Aggressive CE Buying at <b>{s} CE</b> ({item['CE_PRESSURE']}% Pressure)")
-        if item["PE_PRESSURE"] >= 70 and item["PE_REGIME"] == "Long Buildup":
+        if item["PE_PRESSURE"] >= 70 and "Buildup" in item["PE_REGIME"]:
             alert_msgs.append(f"🚨 Aggressive PE Buying at <b>{s} PE</b> ({item['PE_PRESSURE']}% Pressure)")
 
-        rows_html += f"""
-        <tr>
-            <td style="color:#00ff7f;">{item['CE_PRESSURE']}%</td>
-            <td><span class="{ce_cls}">{ce_sc}</span></td>
-            <td style="font-size:11px; color:#94a3b8;">{item['CE_REGIME']}</td>
-            <td style="color:#e2e8f0; font-weight:900;">{s} <span style="font-size:10px; color:#64748b;">({item['TYPE']})</span></td>
-            <td style="font-size:11px; color:#94a3b8;">{item['PE_REGIME']}</td>
-            <td><span class="{pe_cls}">{pe_sc}</span></td>
-            <td style="color:#ff9800;">{item['PE_PRESSURE']}%</td>
-        </tr>
-        """
+        rows_parts.append(
+            f"<tr>"
+            f"<td style='color:#00ff7f;'>{item['CE_PRESSURE']}%</td>"
+            f"<td><span class='{ce_cls}'>{ce_sc}</span></td>"
+            f"<td style='font-size:11px; color:#94a3b8;'>{item['CE_REGIME']}</td>"
+            f"<td style='color:#e2e8f0; font-weight:900;'>{s} <span style='font-size:10px; color:#64748b;'>({item['TYPE']})</span></td>"
+            f"<td style='font-size:11px; color:#94a3b8;'>{item['PE_REGIME']}</td>"
+            f"<td><span class='{pe_cls}'>{pe_sc}</span></td>"
+            f"<td style='color:#ff9800;'>{item['PE_PRESSURE']}%</td>"
+            f"</tr>"
+        )
 
     best_ce_strike = max(matrix_flow_data, key=lambda k: matrix_flow_data[k]["CE_SCORE"])
     best_pe_strike = max(matrix_flow_data, key=lambda k: matrix_flow_data[k]["PE_SCORE"])
+    alert_banner_html = f"<div class='alert-banner'>{' | '.join(alert_msgs)}</div>" if alert_msgs else ""
+    table_rows_str = "".join(rows_parts)
 
-    alert_banner_html = f'<div class="alert-banner">{" | ".join(alert_msgs)}</div>' if alert_msgs else ""
-
-    flow_table_html = f"""
-    <div class="checkpoint-container">
-        {alert_banner_html}
-        <div style="font-size:14px; font-weight:800; color:#38bdf8; margin-bottom:4px; display:flex; justify-content:space-between;">
-            <span>⚡ Nifty Option Order-Flow Aggression Matrix (Futures Confirmed)</span>
-            <span style="font-size:12px; color:#94a3b8;">🔥 Max CE Score: <b>{best_ce_strike}</b> | Max PE Score: <b>{best_pe_strike}</b></span>
-        </div>
-        <table class="flow-table">
-            <thead>
-                <tr>
-                    <th colspan="3" style="color:#00ff7f;">CALL AGGRESSION</th>
-                    <th rowspan="2">STRIKE</th>
-                    <th colspan="3" style="color:#ff9800;">PUT AGGRESSION</th>
-                </tr>
-                <tr>
-                    <th>BUY %</th>
-                    <th>SCORE</th>
-                    <th>REGIME</th>
-                    <th>REGIME</th>
-                    <th>SCORE</th>
-                    <th>BUY %</th>
-                </tr>
-            </thead>
-            <tbody>
-                {rows_html}
-            </tbody>
-        </table>
-    </div>
-    """
+    flow_table_html = (
+        f"<div class='checkpoint-container'>"
+        f"{alert_banner_html}"
+        f"<div style='font-size:14px; font-weight:800; color:#38bdf8; margin-bottom:4px; display:flex; justify-content:space-between;'>"
+        f"<span>⚡ Nifty Option Order-Flow Aggression Matrix (Futures Confirmed)</span>"
+        f"<span style='font-size:12px; color:#94a3b8;'>🔥 Max CE: <b>{best_ce_strike}</b> | Max PE: <b>{best_pe_strike}</b></span>"
+        f"</div>"
+        f"<table class='flow-table'>"
+        f"<thead>"
+        f"<tr>"
+        f"<th colspan='3' style='color:#00ff7f;'>CALL AGGRESSION</th>"
+        f"<th rowspan='2'>STRIKE</th>"
+        f"<th colspan='3' style='color:#ff9800;'>PUT AGGRESSION</th>"
+        f"</tr>"
+        f"<tr>"
+        f"<th>BUY %</th><th>SCORE</th><th>REGIME</th>"
+        f"<th>REGIME</th><th>SCORE</th><th>BUY %</th>"
+        f"</tr>"
+        f"</thead>"
+        f"<tbody>{table_rows_str}</tbody>"
+        f"</table>"
+        f"</div>"
+    )
     order_flow_matrix_box.markdown(flow_table_html, unsafe_allow_html=True)
 
     # 3. 7 Quant Institutional Edge Checkpoints
     checkpoints_html = (
-        '<div class="checkpoint-container">'
-        '<div style="font-size:15px; font-weight:800; color:#58a6ff; margin-bottom:8px;">🎯 7 Institutional Edge Checkpoints</div>'
-        f'<div class="checkpoint-row"><div>1. Multi-Strike Unwinding Filter</div><div style="display:flex; align-items:center;"><span class="cp-val-text">{cp1_val}</span> {get_status_badge_html(cp1_status)}</div></div>'
-        f'<div class="checkpoint-row"><div>2. Gamma Regime Filter (OI Walls)</div><div style="display:flex; align-items:center;"><span class="cp-val-text">{cp2_val}</span> {get_status_badge_html(cp2_status)}</div></div>'
-        f'<div class="checkpoint-row"><div>3. ATM Micro-Price vs Real Volume POC</div><div style="display:flex; align-items:center;"><span class="cp-val-text">{cp3_val}</span> {get_status_badge_html(cp3_status)}</div></div>'
-        f'<div class="checkpoint-row"><div>4. Straddle Value vs VWAP & TLOC</div><div style="display:flex; align-items:center;"><span class="cp-val-text">{cp4_val}</span> {get_status_badge_html(cp4_status)}</div></div>'
-        f'<div class="checkpoint-row"><div>5. Order Book Imbalance (Net Power)</div><div style="display:flex; align-items:center;"><span class="cp-val-text">{cp5_val}</span> {get_status_badge_html(cp5_status)}</div></div>'
-        f'<div class="checkpoint-row"><div>6. Expiry Day Full-Chain Max Pain Guard</div><div style="display:flex; align-items:center;"><span class="cp-val-text">{cp6_val}</span> {get_status_badge_html(cp6_status)}</div></div>'
-        f'<div class="checkpoint-row"><div>7. IV Skew & Volatility Alignment</div><div style="display:flex; align-items:center;"><span class="cp-val-text">{cp7_val}</span> {get_status_badge_html(cp7_status)}</div></div>'
-        '</div>'
+        f"<div class='checkpoint-container'>"
+        f"<div style='font-size:15px; font-weight:800; color:#58a6ff; margin-bottom:8px;'>🎯 7 Institutional Edge Checkpoints</div>"
+        f"<div class='checkpoint-row'><div>1. Multi-Strike Unwinding Filter</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp1_val}</span> {get_status_badge_html(cp1_status)}</div></div>"
+        f"<div class='checkpoint-row'><div>2. Gamma Regime Filter (OI Walls)</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp2_val}</span> {get_status_badge_html(cp2_status)}</div></div>"
+        f"<div class='checkpoint-row'><div>3. ATM Micro-Price vs Real Volume POC</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp3_val}</span> {get_status_badge_html(cp3_status)}</div></div>"
+        f"<div class='checkpoint-row'><div>4. Straddle Value vs VWAP & TLOC</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp4_val}</span> {get_status_badge_html(cp4_status)}</div></div>"
+        f"<div class='checkpoint-row'><div>5. Order Book Imbalance (Net Power)</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp5_val}</span> {get_status_badge_html(cp5_status)}</div></div>"
+        f"<div class='checkpoint-row'><div>6. Expiry Day Full-Chain Max Pain Guard</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp6_val}</span> {get_status_badge_html(cp6_status)}</div></div>"
+        f"<div class='checkpoint-row'><div>7. IV Skew & Volatility Alignment</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp7_val}</span> {get_status_badge_html(cp7_status)}</div></div>"
+        f"</div>"
     )
     checkpoints_box.markdown(checkpoints_html, unsafe_allow_html=True)
 
