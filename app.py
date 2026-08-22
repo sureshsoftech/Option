@@ -83,12 +83,31 @@ st.markdown("""
     .breadth-flex-row:last-child { border-bottom: none; }
     .breadth-label { font-weight: 700; color: #e6edf3; font-size: 14px; min-width: 95px !important; max-width: 105px !important; white-space: nowrap; }
 
+    /* Order Flow Pressure Matrix Styling */
     .flow-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; margin-top: 6px; }
-    .flow-table th { background-color: #161b22; color: #94a3b8; padding: 7px 4px; border: 1px solid #21262d; font-weight: 800; }
+    .flow-table th { background-color: #161b22; color: #94a3b8; padding: 6px 4px; border: 1px solid #21262d; font-weight: 800; }
     .flow-table td { padding: 6px 4px; border: 1px solid #21262d; font-weight: 700; }
     .score-badge-high { background-color: #006622; color: #ffffff; padding: 2px 6px; border-radius: 4px; font-weight: 900; }
     .score-badge-low { background-color: #8b0000; color: #ffffff; padding: 2px 6px; border-radius: 4px; font-weight: 900; }
     .score-badge-mid { background-color: #21262d; color: #94a3b8; padding: 2px 6px; border-radius: 4px; font-weight: 700; }
+
+    /* Custom Border Highlight Badges for Aggression Matrix */
+    .hdr-green-border { border: 2px solid #00ff7f !important; padding: 2px 6px; border-radius: 5px; display: inline-block; }
+    .hdr-orange-border { border: 2px solid #ff9800 !important; padding: 2px 6px; border-radius: 5px; display: inline-block; }
+    .cell-green-border { border: 2px solid #00ff7f !important; border-radius: 4px; display: inline-block; padding: 1px 4px; width: 85%; }
+    .cell-orange-border { border: 2px solid #ff9800 !important; border-radius: 4px; display: inline-block; padding: 1px 4px; width: 85%; }
+    
+    /* ATM Row Prominent Highlighting */
+    .atm-matrix-row {
+        background-color: #1b2434 !important;
+        font-size: 14px !important;
+        border-top: 2px solid #38bdf8 !important;
+        border-bottom: 2px solid #38bdf8 !important;
+    }
+    .atm-matrix-row td {
+        font-size: 13px !important;
+        font-weight: 900 !important;
+    }
 
     .alert-banner {
         background-color: #1e1b4b;
@@ -1176,51 +1195,97 @@ while True:
     )
     breadth_box.markdown(breadth_html, unsafe_allow_html=True)
 
-    # 2b. Option Order Flow Pressure & Aggression Matrix
+    # 2b. Option Order Flow Pressure & Aggression Matrix (Dynamic Highlight & Row Borders)
     rows_parts = []
     alert_msgs = []
+    
+    num_rows = len(matrix_flow_data) if matrix_flow_data else 6
+    tot_ce_pct = sum(v["CE_PRESSURE"] for v in matrix_flow_data.values())
+    tot_pe_pct = sum(v["PE_PRESSURE"] for v in matrix_flow_data.values())
+    tot_ce_sc = sum(v["CE_SCORE"] for v in matrix_flow_data.values())
+    tot_pe_sc = sum(v["PE_SCORE"] for v in matrix_flow_data.values())
+
+    avg_ce_pct = int(round(tot_ce_pct / max(1, num_rows)))
+    avg_pe_pct = int(round(tot_pe_pct / max(1, num_rows)))
+    avg_ce_sc = int(round(tot_ce_sc / max(1, num_rows)))
+    avg_pe_sc = int(round(tot_pe_sc / max(1, num_rows)))
+
+    # Header section border conditions
+    ce_pct_win = avg_ce_pct > avg_pe_pct
+    pe_pct_win = avg_pe_pct > avg_ce_pct
+    ce_sc_win = avg_ce_sc > avg_pe_sc
+    pe_sc_win = avg_pe_sc > avg_ce_sc
+    ce_both_win = ce_pct_win and ce_sc_win
+    pe_both_win = pe_pct_win and pe_sc_win
+
+    ce_hdr_class = "hdr-green-border" if ce_both_win else ""
+    pe_hdr_class = "hdr-orange-border" if pe_both_win else ""
+    ce_pct_hdr_class = "hdr-green-border" if ce_pct_win else ""
+    pe_pct_hdr_class = "hdr-orange-border" if pe_pct_win else ""
+    ce_sc_hdr_class = "hdr-green-border" if ce_sc_win else ""
+    pe_sc_hdr_class = "hdr-orange-border" if pe_sc_win else ""
 
     for s in sorted(matrix_flow_data.keys()):
         item = matrix_flow_data[s]
         ce_sc, pe_sc = item["CE_SCORE"], item["PE_SCORE"]
+        ce_pct, pe_pct = item["CE_PRESSURE"], item["PE_PRESSURE"]
+        
         ce_cls = "score-badge-high" if ce_sc >= 65 else ("score-badge-low" if ce_sc <= 35 else "score-badge-mid")
         pe_cls = "score-badge-high" if pe_sc >= 65 else ("score-badge-low" if pe_sc <= 35 else "score-badge-mid")
 
-        if item["CE_PRESSURE"] >= 70 and "Buildup" in item["CE_REGIME"]:
-            alert_msgs.append(f"🔥 Aggressive CE Buying at <b>{s} CE</b> ({item['CE_PRESSURE']}% Pressure)")
-        if item["PE_PRESSURE"] >= 70 and "Buildup" in item["PE_REGIME"]:
-            alert_msgs.append(f"🚨 Aggressive PE Buying at <b>{s} PE</b> ({item['PE_PRESSURE']}% Pressure)")
+        if ce_pct >= 70 and "Buildup" in item["CE_REGIME"]:
+            alert_msgs.append(f"🔥 Aggressive CE Buying at <b>{s} CE</b> ({ce_pct}% Pressure)")
+        if pe_pct >= 70 and "Buildup" in item["PE_REGIME"]:
+            alert_msgs.append(f"🚨 Aggressive PE Buying at <b>{s} PE</b> ({pe_pct}% Pressure)")
+
+        # Row comparison border conditions
+        row_ce_pct_win = ce_pct > pe_pct
+        row_pe_pct_win = pe_pct > ce_pct
+        row_ce_sc_win = ce_sc > pe_sc
+        row_pe_sc_win = pe_sc > ce_sc
+
+        ce_pct_cell_html = f"<span class='cell-green-border'>{ce_pct}%</span>" if row_ce_pct_win else f"<span>{ce_pct}%</span>"
+        pe_pct_cell_html = f"<span class='cell-orange-border'>{pe_pct}%</span>" if row_pe_pct_win else f"<span>{pe_pct}%</span>"
+        
+        ce_sc_cell_html = f"<span class='cell-green-border'><span class='{ce_cls}'>{ce_sc}</span></span>" if row_ce_sc_win else f"<span class='{ce_cls}'>{ce_sc}</span>"
+        pe_sc_cell_html = f"<span class='cell-orange-border'><span class='{pe_cls}'>{pe_sc}</span></span>" if row_pe_sc_win else f"<span class='{pe_cls}'>{pe_sc}</span>"
+
+        is_atm = (s == atm_strike)
+        row_class = "atm-matrix-row" if is_atm else ""
+        atm_badge = "<span style='font-size:10px; color:#38bdf8; font-weight:900;'>[ATM]</span>" if is_atm else f"<span style='font-size:10px; color:#64748b;'>({item['TYPE']})</span>"
 
         rows_parts.append(
-            f"<tr>"
-            f"<td style='color:#00ff7f;'>{item['CE_PRESSURE']}%</td>"
-            f"<td><span class='{ce_cls}'>{ce_sc}</span></td>"
+            f"<tr class='{row_class}'>"
+            f"<td style='color:#00ff7f;'>{ce_pct_cell_html}</td>"
+            f"<td>{ce_sc_cell_html}</td>"
             f"<td style='font-size:11px; color:#94a3b8;'>{item['CE_REGIME']}</td>"
-            f"<td style='color:#e2e8f0; font-weight:900;'>{s} <span style='font-size:10px; color:#64748b;'>({item['TYPE']})</span></td>"
+            f"<td style='color:#e2e8f0; font-weight:900;'>{s} {atm_badge}</td>"
             f"<td style='font-size:11px; color:#94a3b8;'>{item['PE_REGIME']}</td>"
-            f"<td><span class='{pe_cls}'>{pe_sc}</span></td>"
-            f"<td style='color:#ff9800;'>{item['PE_PRESSURE']}%</td>"
+            f"<td>{pe_sc_cell_html}</td>"
+            f"<td style='color:#ff9800;'>{pe_pct_cell_html}</td>"
             f"</tr>"
         )
 
-    best_ce_strike = max(matrix_flow_data, key=lambda k: matrix_flow_data[k]["CE_SCORE"])
-    best_pe_strike = max(matrix_flow_data, key=lambda k: matrix_flow_data[k]["PE_SCORE"])
     alert_banner_html = f"<div class='alert-banner'>{' | '.join(alert_msgs)}</div>" if alert_msgs else ""
     table_rows_str = "".join(rows_parts)
 
     flow_table_html = (
         f"<div class='checkpoint-container'>"
         f"{alert_banner_html}"
-        f"<div style='font-size:14px; font-weight:800; color:#38bdf8; margin-bottom:4px; display:flex; justify-content:space-between;'>"
-        f"<span>⚡ Nifty Option Order-Flow Aggression Matrix (Futures Confirmed)</span>"
-        f"<span style='font-size:12px; color:#94a3b8;'>🔥 Max CE: <b>{best_ce_strike}</b> | Max PE: <b>{best_pe_strike}</b></span>"
-        f"</div>"
         f"<table class='flow-table'>"
         f"<thead>"
         f"<tr>"
-        f"<th colspan='3' style='color:#00ff7f;'>CALL AGGRESSION</th>"
-        f"<th rowspan='2'>STRIKE</th>"
-        f"<th colspan='3' style='color:#ff9800;'>PUT AGGRESSION</th>"
+        f"<th colspan='3' style='text-align:left; padding-left:8px;'>"
+        f"<span class='{ce_hdr_class}' style='color:#00ff7f; font-size:13px; font-weight:900; margin-right:12px;'>CALL AGGRESSION</span>"
+        f"<span class='{ce_pct_hdr_class}' style='color:#00ff7f; font-weight:900; font-size:12px; margin-right:8px;'>{avg_ce_pct}%</span>"
+        f"<span class='{ce_sc_hdr_class}' style='color:#ffffff; font-weight:900; font-size:12px;'>{avg_ce_sc}</span>"
+        f"</th>"
+        f"<th rowspan='2' style='font-size:13px;'>STRIKE</th>"
+        f"<th colspan='3' style='text-align:right; padding-right:8px;'>"
+        f"<span class='{pe_sc_hdr_class}' style='color:#ff9800; font-weight:900; font-size:12px; margin-right:8px;'>{avg_pe_sc}</span>"
+        f"<span class='{pe_pct_hdr_class}' style='color:#ff9800; font-weight:900; font-size:12px; margin-right:12px;'>{avg_pe_pct}%</span>"
+        f"<span class='{pe_hdr_class}' style='color:#ff9800; font-size:13px; font-weight:900;'>PUT AGGRESSION</span>"
+        f"</th>"
         f"</tr>"
         f"<tr>"
         f"<th>BUY %</th><th>SCORE</th><th>REGIME</th>"
