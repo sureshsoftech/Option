@@ -482,40 +482,40 @@ def _get_executed_trades_tracker():
         st.session_state["executed_trades_tracker"] = tracker
     return tracker
 
-def calculate_full_chain_max_pain(scrip_data):
-    if scrip_data is None or scrip_data.empty:
+def calculate_windowed_max_pain(strikes, ce_oi_dict, pe_oi_dict):
+    """
+    FIX (critical): the previous version ("calculate_full_chain_max_pain") read OI from
+    `scrip_data` — the STATIC scrip master file loaded once via @st.cache_resource. That
+    file only has instrument metadata (token/symbol/strike/expiry/lot size) — it has NO
+    OpenInterest field at all. So `r.get("opnInterest", r.get("openInterest", 0))` was
+    ALWAYS 0 for every single row, every single strike's "total_loss" was always 0, and
+    `min(loss_map, key=loss_map.get)` just returned whichever strike happened to sort
+    first — completely independent of real market conditions. It looked live (labeled
+    "REAL max pain", recomputed every 3s) but was actually a static/near-random value.
+
+    This version computes max pain from the OI we ALREADY fetched live this cycle
+    (ce_oi_dict / pe_oi_dict, from the getMarketData FULL quote calls), vectorized with
+    numpy instead of a nested-iterrows() double loop (which was also slow enough to risk
+    stalling the poll loop on a full option chain).
+
+    Trade-off to be aware of: this uses the same ATM +/- 500 point window as the OI chart
+    (21 strikes), not literally every strike in the listed chain. A true full-chain
+    version would need OI for every strike, which means extra API calls on every poll —
+    tell me if you want that instead and I'll wire it in (at the cost of more API load).
+    """
+    if not strikes:
         return 0
-    try:
-        today_date = get_current_ist().date()
-        valid_options = scrip_data[scrip_data["parsed_date"] >= today_date].copy()
-        if valid_options.empty:
-            return 0
-        nearest_date = valid_options["parsed_date"].min()
-        current_exp_df = valid_options[valid_options["parsed_date"] == nearest_date]
-
-        ce_df = current_exp_df[current_exp_df["symbol"].str.endswith("CE")]
-        pe_df = current_exp_df[current_exp_df["symbol"].str.endswith("PE")]
-
-        all_strikes = sorted(current_exp_df["strike_int"].unique())
-        if not all_strikes:
-            return 0
-
-        loss_map = {}
-        for test_s in all_strikes:
-            total_loss = 0
-            for _, r in ce_df.iterrows():
-                k, oi = r["strike_int"], float(r.get("opnInterest", r.get("openInterest", 0)))
-                if test_s > k and oi > 0:
-                    total_loss += (test_s - k) * oi
-            for _, r in pe_df.iterrows():
-                k, oi = r["strike_int"], float(r.get("opnInterest", r.get("openInterest", 0)))
-                if test_s < k and oi > 0:
-                    total_loss += (k - test_s) * oi
-            loss_map[test_s] = total_loss
-
-        return min(loss_map, key=loss_map.get)
-    except Exception:
+    strikes_arr = np.array(strikes, dtype=float)
+    ce_oi_arr = np.array([ce_oi_dict.get(int(s), 0) for s in strikes], dtype=float)
+    pe_oi_arr = np.array([pe_oi_dict.get(int(s), 0) for s in strikes], dtype=float)
+    if ce_oi_arr.sum() == 0 and pe_oi_arr.sum() == 0:
         return 0
+    losses = np.array([
+        np.sum(np.where(test_s > strikes_arr, (test_s - strikes_arr) * ce_oi_arr, 0.0)) +
+        np.sum(np.where(test_s < strikes_arr, (strikes_arr - test_s) * pe_oi_arr, 0.0))
+        for test_s in strikes_arr
+    ])
+    return int(strikes_arr[int(np.argmin(losses))])
 
 def fetch_live_oi_and_power(_api, scrip_data, atm_strike, spot_price, fut_price):
     if atm_strike == 0:
@@ -742,7 +742,7 @@ def fetch_live_oi_and_power(_api, scrip_data, atm_strike, spot_price, fut_price)
 
     total_ce_oi, total_pe_oi = sum(ce_oi_dict.values()), sum(pe_oi_dict.values())
     pcr_val = round(total_pe_oi / max(1, total_ce_oi), 2) if total_ce_oi > 0 else 0.0
-    real_max_pain = calculate_full_chain_max_pain(scrip_data)
+    real_max_pain = calculate_windowed_max_pain(strikes, ce_oi_dict, pe_oi_dict)  # FIX: was reading a field that never existed
 
     return (strikes, pe_solid, pe_crossed, pe_hollow, ce_solid, ce_crossed, ce_hollow,
             live_cp, live_pp, pcr_val, total_ce_oi, total_pe_oi, ce_oi_dict, pe_oi_dict,
@@ -1307,7 +1307,7 @@ while True:
         f"<div class='checkpoint-row'><div>3. ATM Micro-Price vs Real Volume POC</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp3_val}</span> {get_status_badge_html(cp3_status)}</div></div>"
         f"<div class='checkpoint-row'><div>4. Straddle Value vs VWAP & TLOC</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp4_val}</span> {get_status_badge_html(cp4_status)}</div></div>"
         f"<div class='checkpoint-row'><div>5. Order Book Imbalance (Net Power)</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp5_val}</span> {get_status_badge_html(cp5_status)}</div></div>"
-        f"<div class='checkpoint-row'><div>6. Expiry Day Full-Chain Max Pain Guard</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp6_val}</span> {get_status_badge_html(cp6_status)}</div></div>"
+        f"<div class='checkpoint-row'><div>6. Expiry Day Max Pain Guard (ATM window)</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp6_val}</span> {get_status_badge_html(cp6_status)}</div></div>"
         f"<div class='checkpoint-row'><div>7. IV Skew & Volatility Alignment</div><div style='display:flex; align-items:center;'><span class='cp-val-text'>{cp7_val}</span> {get_status_badge_html(cp7_status)}</div></div>"
         f"</div>"
     )
